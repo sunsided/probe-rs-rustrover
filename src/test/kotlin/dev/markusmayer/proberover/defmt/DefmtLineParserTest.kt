@@ -7,6 +7,19 @@ import org.junit.Test
 class DefmtLineParserTest {
 
     @Test
+    fun `probe-rs 0_32 run output, path relative to the crate's parent`() {
+        val line = "[INFO ] on (blinky_basic arduino-mkr-wifi-1010/examples/blinky_basic.rs:36)"
+        val p = DefmtLineParser.parse(line)!!
+        assertEquals(DefmtLevel.INFO, p.level)
+        assertEquals("arduino-mkr-wifi-1010/examples/blinky_basic.rs", p.path)
+        assertEquals(36, p.lineNumber)
+        assertEquals(
+            listOf("arduino-mkr-wifi-1010/examples/blinky_basic.rs", "examples/blinky_basic.rs", "blinky_basic.rs"),
+            DefmtConsoleFilter.relativeCandidates(p.path!!),
+        )
+    }
+
+    @Test
     fun `full format, level line`() {
         val line = "0.000123 INFO  Hello from the board"
         val p = DefmtLineParser.parse(line)!!

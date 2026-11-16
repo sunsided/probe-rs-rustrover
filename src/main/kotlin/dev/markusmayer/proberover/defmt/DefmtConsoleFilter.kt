@@ -47,10 +47,18 @@ class DefmtConsoleFilter(private val project: Project) : Filter {
     private fun resolve(path: String): VirtualFile? {
         val normalized = path.replace('\\', '/')
         if (File(path).isAbsolute) return LocalFileSystem.getInstance().findFileByPath(normalized)
-        return project.guessProjectDir()?.findFileByRelativePath(normalized)
+        val dir = project.guessProjectDir() ?: return null
+        // probe-rs prints paths relative to the crate's parent (`my-crate/src/main.rs`): try ever shorter suffixes.
+        return relativeCandidates(normalized).firstNotNullOfOrNull(dir::findFileByRelativePath)
     }
 
     companion object {
+        /** `a/b/c.rs` → `a/b/c.rs`, `b/c.rs`, `c.rs`. */
+        fun relativeCandidates(path: String): List<String> {
+            val parts = path.split('/').filter { it.isNotEmpty() && it != "." }
+            return parts.indices.map { parts.drop(it).joinToString("/") }
+        }
+
         fun levelKey(level: DefmtLevel): TextAttributesKey = when (level) {
             DefmtLevel.ERROR -> ConsoleViewContentType.LOG_ERROR_OUTPUT_KEY
             DefmtLevel.WARN -> ConsoleViewContentType.LOG_WARNING_OUTPUT_KEY
