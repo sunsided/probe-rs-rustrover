@@ -110,6 +110,15 @@ class ProbeRsRelayTest {
     }
 
     @Test
+    fun `hovers and watches without a context are evaluated as watches`() {
+        val r = relay()
+        val hover = json(r.handleClientMessage("""{"type":"request","seq":15,"command":"evaluate","arguments":{"expression":"led","frameId":6729}}"""))
+        assertEquals("watch", hover["arguments"].asJsonObject["context"].asString)
+        val repl = """{"type":"request","seq":16,"command":"evaluate","arguments":{"expression":"help","context":"repl"}}"""
+        assertEquals(repl, r.handleClientMessage(repl))
+    }
+
+    @Test
     fun `progress goes only to the side channel, failed launches are copied`() {
         val side = CollectingSide()
         val r = relay(side = side)

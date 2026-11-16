@@ -127,6 +127,12 @@ class ProbeRsRelay(
         }
         val before = obj.toString()
         if (obj.str("command") == "scopes") scopeTracker.onScopesRequest(obj)
+        if (obj.str("command") == "evaluate") {
+            // RustRover sends hovers and watches without a context; probe-rs only looks names up for one ("watch",
+            // "hover"), otherwise it answers <invalid expression "led">.
+            val arguments = obj.getAsJsonObject("arguments")
+            if (arguments != null && !arguments.has("context")) arguments.addProperty("context", "watch")
+        }
         stackCache.onRequest(obj)?.let { body ->
             if (obj.str("command") == "scopes") scopeTracker.onScopes(body)
             val response = JsonObject().apply {
