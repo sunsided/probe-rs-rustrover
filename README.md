@@ -122,7 +122,8 @@ configuration it is debugging (`ProbeRsExecutionListener` records the launch ins
 - **Wokwi goes through GDB,** since Wokwi exposes a GDB server, not a probe. On ESP32 (Xtensa) that needs Espressif's
   GDB in the Rust toolchain settings.
 - **Internal API:** the plugin builds on `DapDriverConfiguration`, which JetBrains marks as internal and may change
-  without notice. A small public DAP-debugger extension point would fix that; RUST-12476 is the place to ask.
+  without notice. A small public DAP-debugger extension point would fix that;
+  [RUST-12476](https://youtrack.jetbrains.com/issue/RUST-12476) is the place to ask.
 
 ## Development
 

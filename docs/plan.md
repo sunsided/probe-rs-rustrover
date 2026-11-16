@@ -20,7 +20,7 @@ Everything else in this plan supports that experience: detection, error messages
 
 ## Prior art (what exists and what doesn't)
 
-I searched the JetBrains Marketplace (API: probe-rs, embedded, openocd, DAP, defmt, RTT, SVD, stm32, esp32, rust embedded, …), the web, and RUST-12476.
+I searched the JetBrains Marketplace (API: probe-rs, embedded, openocd, DAP, defmt, RTT, SVD, stm32, esp32, rust embedded, …), the web, and [RUST-12476](https://youtrack.jetbrains.com/issue/RUST-12476).
 
 **Nobody has built a probe-rs integration for any JetBrains IDE.** There's no defmt or RTT plugin either. What does exist:
 
@@ -39,7 +39,7 @@ I searched the JetBrains Marketplace (API: probe-rs, embedded, openocd, DAP, def
 | nvim-dap-probe-rs, Zed probe-rs extension, probe-rs VS Code extension | various | Reference implementations of probe-rs *client* behavior: launch JSON, RTT handshake, custom events. |
 | LSP4IJ DAP, "Debug Adapter Protocol" (20934) | Red Hat / JetBrains | Generic DAP clients. LSP4IJ lacks ReadMemory and Rust-aware integration; 20934 is the Fleet-family one. Neither is connected to Cargo. |
 
-YouTrack: RUST-12476 (probe-rs, 88 votes, open) and RUST-11880 (Embedded GDB Server, open). Users report that a DAP profile can be created in RustRover 2026.2, but Cargo configurations can't use it. That's the gap this plugin fills.
+YouTrack: [RUST-12476](https://youtrack.jetbrains.com/issue/RUST-12476) (probe-rs, 88 votes, open) and [RUST-11880](https://youtrack.jetbrains.com/issue/RUST-11880) (Embedded GDB Server, open). Users report that a DAP profile can be created in RustRover 2026.2, but Cargo configurations can't use it. That's the gap this plugin fills.
 
 ---
 
@@ -168,7 +168,7 @@ EmbeddedSettings  (resolved in this order, each level overriding the one before)
 - Provider, driver configuration and DAP tap, with RTT/defmt console tabs (text only).
 - probe-rs discovery and version check, the install notification, the udev helper, and error-to-fix mapping for the 5 most common errors.
 - Compatibility: RustRover 2026.3+ (`since-build 263`). Dependencies: `com.jetbrains.rust` and `com.intellij.nativeDebug`. That also covers CLion and IntelliJ IDEA Ultimate with the Rust plugin, since the Rust plugin requires Native Debugging Support starting with 2026.2. Test on those as well.
-- Open source (Apache-2.0 or MIT/Apache, the same as probe-rs), free. Mention it in RUST-12476 and RUST-12499 and in the probe-rs Matrix channel.
+- Open source (Apache-2.0 or MIT/Apache, the same as probe-rs), free. Mention it in [RUST-12476](https://youtrack.jetbrains.com/issue/RUST-12476) and [RUST-12499](https://youtrack.jetbrains.com/issue/RUST-12499) and in the probe-rs Matrix channel.
 
 ### Phase 2: polish (3–4 weeks)
 - defmt console: levels, links, filtering, clear on restart, the same filter for Run output.
