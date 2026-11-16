@@ -4,8 +4,9 @@ Click **Debug** on a Cargo configuration in an embedded Rust project, and RustRo
 `probe-rs dap-server` instead of GDB/LLDB. The firmware is flashed, defmt/RTT logs get their own tab, the chip's
 registers show up in a Peripherals view, and globals can be watched live. Research and roadmap: [`docs/plan.md`](docs/plan.md).
 
-**Status: untested on hardware.** Everything here was built and tested against an unlicensed RustRover 2026.3
-(263.7307.214) install, with no debug probe or board. See [What's verified](#whats-verified).
+**Status: first hardware runs.** Debug launch, flashing progress and defmt RTT logs work on a real board (Arduino MKR
+WiFi 1010, ATSAMD21G18A, through a CMSIS-DAP probe, probe-rs 0.32.0, licensed RustRover 2026.3). Everything else was
+tested against RustRover 2026.3 (263.7307.214) without a board. See [What's verified](#whats-verified).
 
 ## Features
 
@@ -13,11 +14,11 @@ registers show up in a Peripherals view, and globals can be watched live. Resear
 |---|---|---|
 | probe-rs debugging for Cargo configurations, detected from the `probe-rs run --chip …` runner | Debug button / gutter | Headless RustRover: provider loads and runs before the stock GDB/LLDB one |
 | Breakpoints, stepping, variables, disassembly, memory, registers | RustRover's debugger UI, fed by probe-rs | **Not verified** (needs a board) |
-| **RTT tab per channel**: defmt levels colored, `src/main.rs:42` clickable, minimum-level filter, clear/wrap/scroll actions, **input line** to the target's RTT down channel | Debug tool window | Relay and side channel end to end (fake probe-rs); console headless |
+| **RTT tab per channel**: defmt levels colored, `src/main.rs:42` clickable, minimum-level filter, clear/wrap/scroll actions, **input line** to the target's RTT down channel | Debug tool window | **Hardware:** defmt logs in the RTT tab. Relay and side channel end to end (fake probe-rs); console headless |
 | defmt colors and links in **Run** output (`probe-rs run`) | Run tool window | Console filter, headless |
 | **Peripherals**: SVD tree (derivedFrom, clusters, arrays, enums), values read when expanded, refreshed on halt or live, changes highlighted, **edit** registers and fields (read-modify-write) | Peripherals tool window | SVD parser and decoding tests; panel against fake memory; memory reads/writes end to end |
 | **Live Watch**: globals by name (from the firmware's symbol table) or address, sampled while running, **chart** with min/max | Live Watch tool window | ELF reader (synthetic ELF), decoding, panel against a fake target |
-| Flashing progress in the IDE progress bar; only changed flash reprogrammed | Status bar | Relay and side channel end to end |
+| Flashing progress in the IDE progress bar; only changed flash reprogrammed | Status bar | **Hardware.** Relay and side channel end to end |
 | probe-rs errors as notifications with a fix: no probe, several probes (**"Use this probe"** actions), busy, USB permissions (**udev command**), unknown chip, connect under reset, locked flash | Notifications | Advisor tests against probe-rs's own error texts |
 | **Attach to Running Target** (no flashing, no reset: DAP `attach`) | Run menu | Driver configuration test |
 | Settings: chip (**completion** from `probe-rs chip list`), **probe picker** (`probe-rs list`), SVD file (found in the project), **remote probe-rs server** (token in the password safe), and overrides **per run configuration** (chip, probe, SVD, core, flash, RTT) that follow renames | Settings → Build, Execution, Deployment → probe-rs | Headless: apply/reset, renames, fake `probe-rs` executable |
@@ -60,19 +61,22 @@ extension point isn't told which configuration it is debugging, so `ProbeRsExecu
 
 ## What's verified
 
+- **On hardware** (Arduino MKR WiFi 1010, ATSAMD21G18A, CMSIS-DAP probe, probe-rs 0.32.0, licensed RustRover 2026.3,
+  Linux): the plugin loads in the production IDE, Debug on a Cargo example launches through the relay, the firmware is
+  flashed with a progress bar, and defmt logs show up decoded in the RTT tab. The project was detected with the real TOML
+  parser, so the production IDE gives access to the `visibility="internal"` modules the plugin builds on.
 - **Compiles and loads** against RustRover 2026.3, including the `visibility="internal"` modules it builds on (test mode).
-- **78 tests:** parsers (Cargo/TOML, defmt, SVD, ELF, probe-rs output, wokwi.toml), launch JSON (field names from
+- **79 tests:** parsers (Cargo/TOML, defmt, SVD, ELF, probe-rs output, wokwi.toml), launch JSON (field names from
   probe-rs's source), error advice, register and watch decoding, relay routing and commands, **five end-to-end runs of
   the relay as a real child process** against a scripted fake `probe-rs dap-server` (RTT, progress, failed launch,
   memory read/write, RTT input, trace log), and headless RustRover tests for plugin loading, settings, run
   configurations, Peripherals, Live Watch, Wokwi, the probe-rs CLI wrapper, diagnostics and screenshots.
 - **Plugin Verifier:** compatible with RustRover 2026.3; 12 usages of internal API, all in `DapDriverConfiguration`.
 
-**Not verified:** anything that needs a board or a licensed IDE: real debugging and stepping, how probe-rs's values,
-registers and peripherals look in RustRover's debugger, the RTT tab and progress bar inside a real session, memory reads
-while the target runs on real silicon, core dumps, Wokwi with a real simulation, the test tree for embedded-test,
-installing probe-rs, whether the production IDE enforces module visibility more strictly than test mode (TOML parsing
-falls back to a simpler reader if so). CI and Marketplace publishing are configured but haven't run.
+**Not verified:** breakpoints and stepping, how probe-rs's values, registers and peripherals look in RustRover's
+debugger, the Peripherals and Live Watch views with real silicon, RTT input, attach, core dumps, other chips and probes,
+Wokwi with a real simulation, the test tree for embedded-test, installing probe-rs, macOS and Windows. CI and
+Marketplace publishing are configured but haven't run.
 
 ## Not possible, or not done
 
