@@ -50,12 +50,15 @@ def event(name, body):
     send({"type": "event", "event": name, "body": body})
 
 
+progress = False
 while True:
     req = read()
     if req is None:
         break
     cmd = req.get("command")
     if cmd == "initialize":
+        # Like probe-rs: progress events only for a client that claims to support them, console text otherwise.
+        progress = req.get("arguments", {}).get("supportsProgressReporting", False)
         respond(req, {"supportsConfigurationDoneRequest": True, "supportsReadMemoryRequest": True})
         event("initialized", {})
     elif cmd == "launch":
@@ -63,9 +66,12 @@ while True:
             send({"type": "response", "request_seq": req["seq"], "command": "launch", "success": False,
                   "message": "Cannot launch", "body": {"error": {"id": 1, "format": "No connected probes were found."}}})
             continue
-        event("progressStart", {"progressId": "1", "title": "Flashing device"})
-        event("progressUpdate", {"progressId": "1", "percentage": 50.0, "message": "Programming"})
-        event("progressEnd", {"progressId": "1"})
+        if progress:
+            event("progressStart", {"progressId": "1", "title": "Flashing device"})
+            event("progressUpdate", {"progressId": "1", "percentage": 50.0, "message": "Programming"})
+            event("progressEnd", {"progressId": "1"})
+        else:
+            event("output", {"category": "console", "output": "FLASHING: Starting write of firmware to device memory\n"})
         respond(req)
         event("probe-rs-rtt-channel-config", {"channelNumber": 0, "channelName": "defmt", "dataFormat": "Defmt"})
     elif cmd == "rttWindowOpened":

@@ -96,8 +96,21 @@ class ProbeRsRelay(
         while (true) {
             val msg = fromClient.read() ?: break
             trace("ide→probe-rs", msg)
-            toServer.write(msg)
+            toServer.write(handleClientMessage(msg))
         }
+    }
+
+    /**
+     * Returns the IDE message to forward to probe-rs. The IDE's `initialize` doesn't claim progress support, so
+     * probe-rs would report flashing only as console text; the relay claims it and consumes the events itself.
+     * Visible for tests.
+     */
+    fun handleClientMessage(raw: String): String {
+        val obj = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return raw
+        if (obj.str("type") != "request" || obj.str("command") != "initialize") return raw
+        val arguments = obj.getAsJsonObject("arguments") ?: JsonObject().also { obj.add("arguments", it) }
+        arguments.addProperty("supportsProgressReporting", true)
+        return obj.toString().also { trace("→probe-rs", it) }
     }
 
     /** Forwards probe-rs → IDE, rewriting probe-rs extensions, until probe-rs closes its side. */
@@ -143,7 +156,8 @@ class ProbeRsRelay(
                 when (event) {
                     "progressStart", "progressUpdate", "progressEnd" -> {
                         side.send(sideEvent(PROGRESS_KINDS.getValue(event)) { copy(body, "progressId", "title", "message", "percentage") })
-                        return raw
+                        // The IDE didn't ask for progress events (the relay did): show them only through the side channel.
+                        return null
                     }
                 }
                 if (!event.startsWith("probe-rs-")) return raw

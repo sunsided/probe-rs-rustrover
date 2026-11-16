@@ -77,11 +77,21 @@ class ProbeRsRelayTest {
     }
 
     @Test
-    fun `progress passes through and is copied, failed launches are copied`() {
+    fun `relay asks probe-rs for progress events on the IDE's behalf`() {
+        val r = relay()
+        val init = json(r.handleClientMessage("""{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"probe-rs"}}"""))
+        assertTrue(init["arguments"].asJsonObject["supportsProgressReporting"].asBoolean)
+        assertEquals("probe-rs", init["arguments"].asJsonObject["adapterID"].asString)
+        val other = """{"seq":2,"type":"request","command":"launch","arguments":{}}"""
+        assertEquals(other, r.handleClientMessage(other))
+    }
+
+    @Test
+    fun `progress goes only to the side channel, failed launches are copied`() {
         val side = CollectingSide()
         val r = relay(side = side)
         val progress = """{"seq":3,"type":"event","event":"progressUpdate","body":{"progressId":"1","percentage":42.0,"message":"Erasing"}}"""
-        assertEquals(progress, r.handleServerMessage(progress))
+        assertNull(r.handleServerMessage(progress))
         val failed = """{"seq":4,"type":"response","request_seq":2,"command":"launch","success":false,"message":"Cannot launch","body":{"error":{"id":1,"format":"No connected probes were found."}}}"""
         assertEquals(failed, r.handleServerMessage(failed))
 
