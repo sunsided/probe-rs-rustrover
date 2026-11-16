@@ -1,3 +1,5 @@
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
@@ -7,7 +9,11 @@ plugins {
 }
 
 group = "dev.markusmayer.proberover"
-version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
+// publishLocalRepo builds 0.1.0.<yyyyMMdd>.<HHmmss>, so every local build counts as an update for the IDE.
+val publishingLocally = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "publishLocalRepo" }
+version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0").let { base ->
+    if (publishingLocally) base + "." + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd.HHmmss")) else base
+}
 
 // RustRover 2026.3 runs on Java 25.
 kotlin {
@@ -88,4 +94,35 @@ intellijPlatform {
     }
     buildSearchableOptions = false
     instrumentCode = false
+}
+
+// A plugin repository on disk for your own IDE: Settings → Plugins → ⚙ → Manage Plugin Repositories →
+// file:///…/plugin-repo/updatePlugins.xml. Then each `./gradlew publishLocalRepo` shows up as a plugin update.
+val localPluginRepo = providers.gradleProperty("localPluginRepo")
+    .getOrElse(System.getProperty("user.home") + "/.local/share/probe-rs-rustrover/plugin-repo")
+
+tasks.register("publishLocalRepo") {
+    group = "intellij platform"
+    description = "Builds the plugin and publishes it to a local plugin repository (file://) for your own IDE"
+    val zip = tasks.named<Zip>("buildPlugin").flatMap { it.archiveFile }
+    val pluginVersion = project.version.toString()
+    val sinceBuild = "263"
+    inputs.file(zip)
+    doLast {
+        val repo = file(localPluginRepo).apply { mkdirs() }
+        // Keep a few older zips: the IDE caches updatePlugins.xml and may still offer the previous version.
+        repo.listFiles { f -> f.name.endsWith(".zip") }?.sortedByDescending { it.lastModified() }?.drop(4)?.forEach { it.delete() }
+        val target = zip.get().asFile.copyTo(repo.resolve(zip.get().asFile.name), overwrite = true)
+        repo.resolve("updatePlugins.xml").writeText(
+            """
+            |<?xml version="1.0" encoding="UTF-8"?>
+            |<plugins>
+            |  <plugin id="dev.markusmayer.proberover" url="file://${target.absolutePath}" version="$pluginVersion">
+            |    <idea-version since-build="$sinceBuild"/>
+            |  </plugin>
+            |</plugins>
+            |""".trimMargin(),
+        )
+        logger.lifecycle("Published $pluginVersion to file://${repo.resolve("updatePlugins.xml").absolutePath}")
+    }
 }

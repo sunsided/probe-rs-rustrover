@@ -98,7 +98,13 @@ review may object. Worth asking on RUST-12476 for a small public DAP-debugger ex
 ./gradlew test -PplatformTests=true     # adds the headless RustRover tests and screenshots (build/screenshots)
 ./gradlew verifyPlugin                  # Plugin Verifier (RustRover and CLion 2026.3)
 ./gradlew buildPlugin                   # build/distributions/probe-rs-rustrover-0.1.0.zip
+./gradlew publishLocalRepo              # 0.1.0.<date>.<time> into a local plugin repository, see below
 ```
+
+**Local plugin repository:** `publishLocalRepo` writes the zip and an `updatePlugins.xml` to
+`~/.local/share/probe-rs-rustrover/plugin-repo/` (or `-PlocalPluginRepo=…`). Add
+`file:///home/<you>/.local/share/probe-rs-rustrover/plugin-repo/updatePlugins.xml` once under Settings → Plugins → ⚙ →
+Manage Plugin Repositories; after that each `publishLocalRepo` shows up as an update of the installed plugin.
 
 By default the build downloads RustRover 2026.3 and a Java 25 toolchain (RustRover 2026.3 runs on Java 25). To use a
 local install instead, set `rustRoverPath` in `~/.gradle/gradle.properties`, or pass `-PrustRoverPath=…`. With a local
