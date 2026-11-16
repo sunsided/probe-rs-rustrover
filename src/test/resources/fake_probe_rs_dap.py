@@ -4,8 +4,12 @@ It reproduces the probe-rs behavior the relay depends on: flashing progress even
 announcement after it, and RTT data (with ANSI colors, as probe-rs may send it) only once the client has answered
 with `rttWindowOpened`.
 """
+import base64
 import json
 import sys
+
+# A little target memory: 0x40020000.. holds GPIOA (MODER = 0xA8000000, IDR = 0x00000001).
+memory = {0x40020000 + i: b for i, b in enumerate(bytes.fromhex("000000A8") + bytes(12) + bytes.fromhex("01000000"))}
 
 inp = sys.stdin.buffer
 out = sys.stdout.buffer
@@ -71,6 +75,25 @@ while True:
         respond(req)
         event("probe-rs-rtt-data", {"channelNumber": 0, "data": "0.000123 \u001b[32mINFO \u001b[0m Hello from the board\n"})
         event("probe-rs-show-message", {"severity": "warning", "message": "Flash verify skipped"})
+    elif cmd == "readMemory":
+        args = req["arguments"]
+        address = int(args["memoryReference"], 0)
+        data = bytes(memory.get(address + i, 0) for i in range(args["count"]))
+        respond(req, {"address": hex(address), "data": base64.b64encode(data).decode()})
+    elif cmd == "writeMemory":
+        args = req["arguments"]
+        address = int(args["memoryReference"], 0)
+        for i, b in enumerate(base64.b64decode(args["data"])):
+            memory[address + i] = b
+        respond(req, {"bytesWritten": len(base64.b64decode(args["data"]))})
+    elif cmd == "evaluate":
+        expression = req["arguments"]["expression"]
+        if expression.startswith("rtt write "):
+            channel, _, data = expression[len("rtt write "):].partition(" ")
+            respond(req, {"result": "", "variablesReference": 0})
+            event("probe-rs-rtt-data", {"channelNumber": int(channel), "data": "echo: " + data + "\n"})
+        else:
+            send({"type": "response", "request_seq": req["seq"], "command": "evaluate", "success": False, "message": "Unknown command"})
     elif cmd == "disconnect":
         respond(req)
         break

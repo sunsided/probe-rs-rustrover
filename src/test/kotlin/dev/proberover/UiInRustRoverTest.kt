@@ -50,7 +50,7 @@ class UiInRustRoverTest : BasePlatformTestCase() {
     }
 
     fun `test session UI tolerates events without a debug session`() {
-        val ui = ProbeRsSessionUi(project, "RP2040")
+        val ui = ProbeRsSessionUi(dev.proberover.session.ProbeRsSession(project, dev.proberover.model.ProbeRsTarget(chip = "RP2040"), "Run blinky"))
         fun ev(kind: String, fill: JsonObject.() -> Unit) = JsonObject().apply { addProperty("kind", kind); fill() }
         ui.onEvent("rtt-channel", ev("rtt-channel") { addProperty("channel", 0); addProperty("name", "defmt") })
         ui.onEvent("rtt-data", ev("rtt-data") { addProperty("channel", 0); addProperty("data", "0.1 INFO hi\npartial") })

@@ -21,12 +21,13 @@ class ProbeRsDriverConfigurationProvider : RsDebuggerDriverConfigurationProvider
         emulateTerminal: Boolean,
     ): DebuggerDriverConfiguration? {
         val settings = project.service<ProbeRsProjectService>()
-        val runSettings = project.service<ProbeRsLaunchTracker>().consume()?.let(project::embeddedRunSettings)
+        val configurationName = project.service<ProbeRsLaunchTracker>().consume()
+        val runSettings = configurationName?.let(project::embeddedRunSettings)
         val target = settings.resolveTarget(runSettings) ?: return null
         val probeRs = settings.probeRsExecutable() ?: run {
             settings.notifyProbeRsMissing()
             return null
         }
-        return ProbeRsDriverConfiguration(project, target, probeRs, isElevated, emulateTerminal)
+        return ProbeRsDriverConfiguration(project, target, probeRs, isElevated, emulateTerminal, configurationName)
     }
 }

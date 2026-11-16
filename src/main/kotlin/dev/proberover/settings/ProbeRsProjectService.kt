@@ -63,6 +63,18 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         return run?.applyTo(projectLevel) ?: projectLevel
     }
 
+    /** `.svd` files in the project (a few levels deep, skipping build output), for picking the chip's SVD file. */
+    fun findSvdFiles(maxDepth: Int = 4): List<File> {
+        val base = project.basePath?.let(::File)?.takeIf { it.isDirectory } ?: return emptyList()
+        val skip = setOf("target", ".git", ".idea", "node_modules", ".gradle")
+        return base.walkTopDown()
+            .onEnter { it == base || (it.name !in skip && it.toPath().nameCount - base.toPath().nameCount <= maxDepth) }
+            .filter { it.isFile && it.extension.equals("svd", ignoreCase = true) }
+            .take(50)
+            .sortedBy { it.path }
+            .toList()
+    }
+
     fun probeRsExecutable(): String? {
         state.probeRsPath?.takeIf { it.isNotBlank() && Path.of(it).exists() }?.let { return it }
         val exe = if (isWindows()) "probe-rs.exe" else "probe-rs"

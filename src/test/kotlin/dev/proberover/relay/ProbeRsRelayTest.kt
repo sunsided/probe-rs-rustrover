@@ -180,6 +180,56 @@ class ProbeRsRelayTest {
         assertEquals("launch-failed", events.single()["kind"].asString)
     }
 
+    @Test
+    fun `IDE commands become DAP requests and replies come back on the side channel`() {
+        val toServer = ByteArrayOutputStream()
+        val side = CollectingSide()
+        val r = relay(toServer, side)
+        r.handleCommand(JsonParser.parseString("""{"id":7,"op":"rtt-write","channel":1,"data":"led on"}""").asJsonObject)
+        val request = json(DapReader(ByteArrayInputStream(toServer.toByteArray())).read())
+        assertEquals("evaluate", request["command"].asString)
+        assertEquals("rtt write 1 led on", request["arguments"].asJsonObject["expression"].asString)
+        assertEquals("repl", request["arguments"].asJsonObject["context"].asString)
+
+        val seq = request["seq"].asInt
+        assertTrue(seq >= ProbeRsRelay.OWN_SEQ_BASE)
+        assertNull(r.handleServerMessage("""{"seq":9,"type":"response","request_seq":$seq,"command":"evaluate","success":true,"body":{"result":""}}"""))
+        val reply = side.events.single()
+        assertEquals("reply", reply["kind"].asString)
+        assertEquals(7L, reply["id"].asLong)
+        assertTrue(reply["success"].asBoolean)
+
+        r.handleCommand(JsonParser.parseString("""{"id":8,"op":"format-disk"}""").asJsonObject)
+        assertEquals(false, side.events.last()["success"].asBoolean)
+    }
+
+    @Test(timeout = 60_000)
+    fun `end to end commands - read and write memory, send RTT input`() {
+        val events = Collections.synchronizedList(mutableListOf<JsonObject>())
+        val channel = LaunchChannel(object : SideEventListener {
+            override fun onEvent(kind: String, event: JsonObject) { events += event }
+        })
+        val ide = Ide(ProbeRsDriverConfiguration.relayCommandLine(listOf("python3", "-u", script.path), channel.port to channel.token).getCommandLineList(null))
+        ide.request("initialize"); ide.next(); ide.next()
+        val deadline = System.currentTimeMillis() + 10_000
+        while (!channel.isConnected && System.currentTimeMillis() < deadline) Thread.sleep(20)
+
+        val moder = channel.request("readMemory") { addProperty("address", "0x40020000"); addProperty("count", 4) }.get(10, TimeUnit.SECONDS)
+        assertEquals("AAAAqA==", moder["data"].asString) // 00 00 00 A8 little-endian = 0xA8000000
+
+        channel.request("writeMemory") { addProperty("address", "0x40020000"); addProperty("data", "AQIDBA==") }.get(10, TimeUnit.SECONDS)
+        val back = channel.request("readMemory") { addProperty("address", "0x40020000"); addProperty("count", 4) }.get(10, TimeUnit.SECONDS)
+        assertEquals("AQIDBA==", back["data"].asString)
+
+        channel.request("rtt-write") { addProperty("channel", 0); addProperty("data", "hello board") }.get(10, TimeUnit.SECONDS)
+        val failed = runCatching { channel.request("evaluate") { addProperty("expression", "nonsense") }.get(10, TimeUnit.SECONDS) }
+        assertTrue(failed.exceptionOrNull()?.cause is dev.proberover.session.ProbeRsCommandException)
+
+        assertEquals(0, ide.finish())
+        channel.awaitClosed(10_000)
+        assertEquals("echo: hello board\n", events.single { it["kind"].asString == "rtt-data" }["data"].asString)
+    }
+
     @Test(timeout = 30_000)
     fun `side channel rejects a wrong token`() {
         val events = Collections.synchronizedList(mutableListOf<JsonObject>())

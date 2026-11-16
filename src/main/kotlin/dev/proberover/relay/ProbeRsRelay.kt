@@ -37,6 +37,55 @@ class ProbeRsRelay(
 
     private val ownSeq = AtomicInteger(OWN_SEQ_BASE)
     private val rttChannels = mutableMapOf<Int, String>()
+    /** Requests sent for IDE commands: DAP seq → command id. */
+    private val pendingCommands = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    init {
+        side.onCommand(::handleCommand)
+    }
+
+    /**
+     * Turns an IDE command from the side channel into a DAP request to probe-rs. The response is returned to the IDE
+     * as a `reply` event. Visible for tests.
+     */
+    fun handleCommand(command: JsonObject) {
+        val id = command.get("id")?.asLong ?: return
+        val (dapCommand, arguments) = when (command.str("op")) {
+            "readMemory" -> "readMemory" to JsonObject().apply {
+                addProperty("memoryReference", command.str("address"))
+                addProperty("count", command.get("count")?.asInt ?: 0)
+            }
+            "writeMemory" -> "writeMemory" to JsonObject().apply {
+                addProperty("memoryReference", command.str("address"))
+                addProperty("data", command.str("data"))
+            }
+            "evaluate" -> "evaluate" to JsonObject().apply {
+                addProperty("expression", command.str("expression"))
+                addProperty("context", command.str("context") ?: "repl")
+            }
+            "rtt-write" -> "evaluate" to JsonObject().apply {
+                // probe-rs's REPL: `rtt write <channel> <data>`
+                addProperty("expression", "rtt write ${command.get("channel")?.asInt ?: 0} ${command.str("data").orEmpty()}")
+                addProperty("context", "repl")
+            }
+            else -> {
+                side.send(sideEvent("reply") {
+                    addProperty("id", id)
+                    addProperty("success", false)
+                    addProperty("message", "Unknown command ${command.str("op")}")
+                })
+                return
+            }
+        }
+        val seq = ownSeq.getAndIncrement()
+        pendingCommands[seq] = id
+        toServer.write(JsonObject().apply {
+            addProperty("seq", seq)
+            addProperty("type", "request")
+            addProperty("command", dapCommand)
+            add("arguments", arguments)
+        }.toString())
+    }
 
     /** Forwards IDE → probe-rs until the IDE closes its side. */
     fun pumpClientToServer() {
@@ -62,7 +111,17 @@ class ProbeRsRelay(
                 val requestSeq = obj.get("request_seq")?.asInt ?: return raw
                 val failed = obj.get("success")?.asBoolean == false
                 if (requestSeq >= OWN_SEQ_BASE) {
-                    if (failed) log("probe-rs rejected ${obj.str("command")}: ${obj.str("message")}")
+                    val commandId = pendingCommands.remove(requestSeq)
+                    if (commandId != null) {
+                        side.send(sideEvent("reply") {
+                            addProperty("id", commandId)
+                            addProperty("success", !failed)
+                            obj.str("message")?.let { addProperty("message", errorText(obj)) }
+                            obj.getAsJsonObject("body")?.let { add("body", it) }
+                        })
+                    } else if (failed) {
+                        log("probe-rs rejected ${obj.str("command")}: ${obj.str("message")}")
+                    }
                     return null
                 }
                 val command = obj.str("command")

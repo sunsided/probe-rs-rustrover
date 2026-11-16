@@ -22,6 +22,8 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="probe-rs" displayType="BALLOON"/>
+        <toolWindow id="Peripherals" anchor="right" secondary="false" canCloseContents="false"
+                    factoryClass="dev.proberover.peripherals.PeripheralsToolWindowFactory"/>
         <consoleFilterProvider implementation="dev.proberover.defmt.DefmtConsoleFilterProvider"/>
         <projectConfigurable parentId="build" id="dev.proberover.settings" displayName="probe-rs"
                              instance="dev.proberover.settings.ProbeRsConfigurable"/>

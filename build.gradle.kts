@@ -9,7 +9,12 @@ group = "dev.proberover"
 version = "0.0.1-spike"
 
 // RustRover 2026.3 runs on Java 25.
-kotlin { jvmToolchain(25) }
+kotlin {
+    jvmToolchain(25)
+    // Use the platform interfaces' default methods directly instead of generating bridges for each of them,
+    // which the Plugin Verifier would report as overriding deprecated and experimental API.
+    compilerOptions { jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY) }
+}
 
 val rustRoverPath = providers.gradleProperty("rustRoverPath").orNull
 

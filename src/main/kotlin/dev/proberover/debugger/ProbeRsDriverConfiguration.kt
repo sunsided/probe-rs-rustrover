@@ -13,6 +13,7 @@ import dev.proberover.launch.LaunchConfigBuilder
 import dev.proberover.model.ProbeRsTarget
 import dev.proberover.relay.RelayMain
 import dev.proberover.session.LaunchChannel
+import dev.proberover.session.ProbeRsSession
 import dev.proberover.session.ProbeRsSessionUi
 import java.io.File
 import java.nio.file.Path
@@ -28,6 +29,10 @@ class ProbeRsDriverConfiguration(
     private val probeRsExecutable: String,
     isElevated: Boolean,
     emulateTerminal: Boolean,
+    /** The Cargo run configuration being debugged, if known. */
+    private val configurationName: String? = null,
+    /** Extra arguments for `probe-rs dap-server`, e.g. `--host` for a remote probe server. */
+    private val serverArguments: List<String> = emptyList(),
 ) : DapDriverConfiguration(
     project,
     "probe-rs",
@@ -52,8 +57,9 @@ class ProbeRsDriverConfiguration(
 
     override fun createDriverCommandLine(driver: DebuggerDriver, architectureType: ArchitectureType): GeneralCommandLine {
         // One side channel per debug session: RTT tabs, flashing progress and error notifications.
-        val channel = LaunchChannel(ProbeRsSessionUi(project, target.chip))
-        return relayCommandLine(listOf(probeRsExecutable, "dap-server"), channel.port to channel.token)
+        val session = ProbeRsSession(project, target, configurationName)
+        val channel = LaunchChannel(ProbeRsSessionUi(session))
+        return relayCommandLine(listOf(probeRsExecutable, "dap-server") + serverArguments, channel.port to channel.token)
             .withWorkDirectory(project.basePath)
     }
 

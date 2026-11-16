@@ -3,8 +3,6 @@ package dev.proberover.session
 import com.google.gson.JsonObject
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
-import com.intellij.execution.filters.TextConsoleBuilderFactory
-import com.intellij.execution.ui.ConsoleView
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
@@ -18,8 +16,8 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.XDebugSessionListener
 import dev.proberover.advice.ProbeRsErrorAdvisor
-import dev.proberover.defmt.DefmtConsoleFilter
 import dev.proberover.defmt.DefmtLevel
 import dev.proberover.defmt.DefmtLine
 import dev.proberover.defmt.DefmtLineParser
@@ -36,12 +34,14 @@ import java.util.concurrent.TimeUnit
  *
  * Events arrive on a background thread; all UI work is queued on the EDT in arrival order.
  */
-class ProbeRsSessionUi(private val project: Project, private val chip: String) : SideEventListener {
+class ProbeRsSessionUi(private val session: ProbeRsSession) : SideEventListener {
+    private val project: Project = session.project
+    private val chip: String = session.target.chip
 
-    private val consoles = HashMap<Int, ConsoleView>()          // EDT only
+    private val consoles = HashMap<Int, RttPanel>()             // EDT only
     private val partialLines = HashMap<Int, StringBuilder>()    // EDT only
     private var selectedFirstTab = false                        // EDT only
-    private var session: XDebugSession? = null                  // EDT only
+    private var xSession: XDebugSession? = null                 // EDT only
     private val progress = ConcurrentHashMap<String, FlashProgress>()
 
     override fun onEvent(kind: String, event: JsonObject) {
@@ -63,10 +63,21 @@ class ProbeRsSessionUi(private val project: Project, private val chip: String) :
         }
     }
 
+    override fun onConnected(channel: LaunchChannel) {
+        session.channel = channel
+        edt {
+            findSession()
+            ProbeRsSessions.get(project).started(session)
+        }
+    }
+
     override fun onClosed() {
         progress.values.forEach(FlashProgress::finish)
         progress.clear()
-        edt { partialLines.keys.toList().forEach { flushPartial(it) } }
+        edt {
+            partialLines.keys.toList().forEach { flushPartial(it) }
+            ProbeRsSessions.get(project).ended(session)
+        }
     }
 
     // RTT
@@ -91,45 +102,58 @@ class ProbeRsSessionUi(private val project: Project, private val chip: String) :
         pending.setLength(0)
     }
 
-    private fun printLine(console: ConsoleView?, channel: Int, line: String) {
-        if (console == null) {
-            // No debug session to attach a tab to: fall back to the session's own console, then drop.
-            session?.consoleView?.print("[rtt$channel] $line", ConsoleViewContentType.NORMAL_OUTPUT)
+    private fun printLine(panel: RttPanel?, channel: Int, line: String) {
+        if (panel == null) {
+            // No debug session to attach a tab to: fall back to the session's own console.
+            xSession?.consoleView?.print("[rtt$channel] $line", ConsoleViewContentType.NORMAL_OUTPUT)
             return
         }
-        console.print(line, contentType(DefmtLineParser.parse(line)))
+        panel.printLine(line)
     }
 
-    private fun console(channel: Int, name: String?): ConsoleView? {
+    private fun console(channel: Int, name: String?): RttPanel? {
         consoles[channel]?.let { return it }
-        val session = findSession() ?: return null
-        val ui = session.ui ?: return null
-        val console = TextConsoleBuilderFactory.getInstance().createBuilder(project).apply {
-            addFilter(DefmtConsoleFilter(project))
-        }.console
+        val xSession = findSession() ?: return null
+        val ui = xSession.ui ?: return null
+        val panel = RttPanel(project, session, channel)
 
         val content = ui.createContent(
             "dev.proberover.rtt.$channel",
-            console.component,
+            panel.component,
             if (name.isNullOrBlank()) "RTT $channel" else "RTT: $name",
             AllIcons.Debugger.Console,
-            console.preferredFocusableComponent,
+            panel.console.preferredFocusableComponent,
         )
         content.isCloseable = false
-        Disposer.register(content, console) // the tab goes away with the debug session, and takes the console with it
+        Disposer.register(content, panel) // the tab goes away with the debug session, and takes the console with it
         ui.addContent(content)
         if (!selectedFirstTab) {
             selectedFirstTab = true
             ui.selectAndFocus(content, false, false)
         }
-        consoles[channel] = console
-        return console
+        consoles[channel] = panel
+        return panel
     }
 
+    /**
+     * The IDE debug session this probe-rs session belongs to: the one named after the debugged run configuration if
+     * there is one, otherwise the current session. Also forwards its pause/resume to [ProbeRsSessionListener].
+     */
     private fun findSession(): XDebugSession? {
-        session?.takeIf { !it.isStopped }?.let { return it }
+        xSession?.takeIf { !it.isStopped }?.let { return it }
         val manager = XDebuggerManager.getInstance(project)
-        return (manager.currentSession ?: manager.debugSessions.lastOrNull())?.also { session = it }
+        val running = manager.debugSessions.filter { !it.isStopped }
+        val found = running.lastOrNull { it.sessionName == session.configurationName }
+            ?: manager.currentSession?.takeIf { !it.isStopped }
+            ?: running.lastOrNull()
+            ?: return null
+        xSession = found
+        session.debugSession = found
+        found.addSessionListener(object : XDebugSessionListener {
+            override fun sessionPaused() = edt { ProbeRsSessions.get(project).publisher().targetHalted(session) }
+            override fun sessionResumed() = edt { ProbeRsSessions.get(project).publisher().targetResumed(session) }
+        })
+        return found
     }
 
     // Messages
