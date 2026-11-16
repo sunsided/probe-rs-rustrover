@@ -17,7 +17,7 @@ import org.rust.debugger.RsDebuggerDriverConfigurationProvider
 class PluginLoadsInRustRoverTest : BasePlatformTestCase() {
 
     fun `test plugin is enabled`() {
-        val plugin = PluginManagerCore.getPlugin(PluginId.getId("dev.proberover"))
+        val plugin = PluginManagerCore.getPlugin(PluginId.getId("dev.markusmayer.proberover"))
         assertNotNull("plugin not loaded", plugin)
         assertTrue("plugin disabled", plugin!!.isEnabled)
     }
@@ -49,7 +49,7 @@ class PluginLoadsInRustRoverTest : BasePlatformTestCase() {
      * classpath, so this doesn't prove isolation in the production IDE; the line-reader fallback covers that case.
      */
     fun `test the TOML parser is reachable through the plugin's classloader`() {
-        val loader = PluginManagerCore.getPlugin(PluginId.getId("dev.proberover"))!!.pluginClassLoader!!
+        val loader = PluginManagerCore.getPlugin(PluginId.getId("dev.markusmayer.proberover"))!!.pluginClassLoader!!
         val detector = loader.loadClass("dev.proberover.detect.CargoConfigDetector")
         val instance = detector.getField("INSTANCE").get(null)
         val detect = detector.getMethod("detect", String::class.java, String::class.java)

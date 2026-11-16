@@ -6,7 +6,7 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.20.1"
 }
 
-group = "dev.proberover"
+group = "dev.markusmayer.proberover"
 version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
 
 // RustRover 2026.3 runs on Java 25.

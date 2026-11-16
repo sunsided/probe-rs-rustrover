@@ -82,7 +82,7 @@ falls back to a simpler reader if so). CI and Marketplace publishing are configu
 - **Loading a core dump to debug it:** probe-rs's debug server can write core dumps but not load them.
 - **Wokwi through probe-rs:** Wokwi exposes a GDB server, not a probe, so it goes through RustRover's GDB debugger. On
   ESP32 (Xtensa) that needs Espressif's GDB set in the Rust toolchain settings.
-- **Marketplace vendor details:** set your vendor name, e-mail and URL in `plugin.xml` before publishing.
+- **Marketplace vendor details:** the vendor is "Markus Mayer"; add a public `url` or `email` to the `vendor` tag in `plugin.xml` if you want them on the Marketplace page.
 
 **Main risk:** `DapDriverConfiguration` is marked internal. JetBrains may change it without notice, and Marketplace
 review may object. Worth asking on RUST-12476 for a small public DAP-debugger extension point.

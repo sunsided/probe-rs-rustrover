@@ -1,7 +1,7 @@
 <idea-plugin>
-    <id>dev.proberover</id>
+    <id>dev.markusmayer.proberover</id>
     <name>probe-rs Debugging</name>
-    <vendor>proberover</vendor>
+    <vendor>Markus Mayer</vendor>
     <description><![CDATA[
     Debug embedded Rust firmware in RustRover with probe-rs. Click Debug on a Cargo run configuration in a project
     whose <code>.cargo/config.toml</code> uses <code>probe-rs run --chip …</code> as its runner: the firmware is
