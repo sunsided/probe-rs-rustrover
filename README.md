@@ -66,7 +66,7 @@ extension point isn't told which configuration it is debugging, so `ProbeRsExecu
   flashed with a progress bar, and defmt logs show up decoded in the RTT tab. The project was detected with the real TOML
   parser, so the production IDE gives access to the `visibility="internal"` modules the plugin builds on.
 - **Compiles and loads** against RustRover 2026.3, including the `visibility="internal"` modules it builds on (test mode).
-- **79 tests:** parsers (Cargo/TOML, defmt, SVD, ELF, probe-rs output, wokwi.toml), launch JSON (field names from
+- **85 tests:** parsers (Cargo/TOML, defmt, SVD, ELF, probe-rs output, wokwi.toml), launch JSON (field names from
   probe-rs's source), error advice, register and watch decoding, relay routing and commands, **five end-to-end runs of
   the relay as a real child process** against a scripted fake `probe-rs dap-server` (RTT, progress, failed launch,
   memory read/write, RTT input, trace log), and headless RustRover tests for plugin loading, settings, run
