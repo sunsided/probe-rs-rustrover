@@ -1,32 +1,37 @@
 # probe-rs for RustRover
 
-Click **Debug** on a Cargo configuration in an embedded Rust project, and RustRover debugs through
-`probe-rs dap-server` instead of GDB/LLDB. The firmware is flashed, defmt/RTT logs get their own tab, the chip's
-registers show up in a Peripherals view, and globals can be watched live. Research and roadmap: [`docs/plan.md`](docs/plan.md).
+A RustRover plugin that debugs embedded Rust through [probe-rs](https://probe.rs): click **Debug** on a Cargo
+configuration of your firmware, and it gets flashed, stops at your breakpoints, streams its defmt logs into a tab of
+their own, and shows the chip's registers decoded from its SVD file.
 
-**Status: first hardware runs.** Debug launch, flashing progress and defmt RTT logs work on a real board (Arduino MKR
-WiFi 1010, ATSAMD21G18A, through a CMSIS-DAP probe, probe-rs 0.32.0, licensed RustRover 2026.3). Everything else was
-tested against RustRover 2026.3 (263.7307.214) without a board. See [What's verified](#whats-verified).
+I used to do my embedded work in CLion, with its embedded debugger. RustRover has no way to talk to a debug probe
+(JetBrains' issue [RUST-12476](https://youtrack.jetbrains.com/issue/RUST-12476) asks for probe-rs support), and the only
+debugger front end for `probe-rs dap-server` is the VS Code extension. This plugin adds one to RustRover.
 
-## Features
+**Status:** it works on my desk, which is an Arduino MKR WiFi 1010 (ATSAMD21G18A) behind a cheap CMSIS-DAP probe, with
+probe-rs 0.32 and RustRover 2026.3 on Linux. Other chips, probes and operating systems haven't seen it yet, so YMMV and
+caveat emptor. [`docs/verification.md`](docs/verification.md) lists what ran on hardware and what only ran in tests.
 
-| Feature | Where | Verified how |
-|---|---|---|
-| probe-rs debugging for Cargo configurations, detected from the `probe-rs run --chip …` runner | Debug button / gutter | Headless RustRover: provider loads and runs before the stock GDB/LLDB one |
-| Breakpoints, stepping, variables, disassembly, memory, registers | RustRover's debugger UI, fed by probe-rs | **Not verified** (needs a board) |
-| **RTT tab per channel**: defmt levels colored, `src/main.rs:42` clickable, minimum-level filter, clear/wrap/scroll actions, **input line** to the target's RTT down channel | Debug tool window | **Hardware:** defmt logs in the RTT tab. Relay and side channel end to end (fake probe-rs); console headless |
-| defmt colors and links in **Run** output (`probe-rs run`) | Run tool window | Console filter, headless |
-| **Peripherals**: SVD tree (derivedFrom, clusters, arrays, enums), values read when expanded, refreshed on halt or live, changes highlighted, **edit** registers and fields (read-modify-write) | Peripherals tool window | SVD parser and decoding tests; panel against fake memory; memory reads/writes end to end |
-| **Live Watch**: globals by name (from the firmware's symbol table) or address, sampled while running, **chart** with min/max | Live Watch tool window | ELF reader (synthetic ELF), decoding, panel against a fake target |
-| Flashing progress in the IDE progress bar; only changed flash reprogrammed | Status bar | **Hardware.** Relay and side channel end to end |
-| probe-rs errors as notifications with a fix: no probe, several probes (**"Use this probe"** actions), busy, USB permissions (**udev command**), unknown chip, connect under reset, locked flash | Notifications | Advisor tests against probe-rs's own error texts |
-| **Attach to Running Target** (no flashing, no reset: DAP `attach`) | Run menu | Driver configuration test |
-| Settings: chip (**completion** from `probe-rs chip list`), **probe picker** (`probe-rs list`), SVD file (found in the project), **remote probe-rs server** (token in the password safe), and overrides **per run configuration** (chip, probe, SVD, core, flash, RTT) that follow renames | Settings → Build, Execution, Deployment → probe-rs | Headless: apply/reset, renames, fake `probe-rs` executable |
-| **Install or update probe-rs** (cargo binstall / install), version check, one-time "embedded project detected" notification | Tools → probe-rs, notifications | Command construction; startup code compiled, not exercised |
-| **Save Core Dump** (registers + RAM from `probe-rs chip info`) | Tools → probe-rs | Parser test; the `dump` command itself not exercised |
-| **Copy probe-rs Diagnostics**: versions, detection, launch JSON, last session's DAP traffic, never the remote token | Tools → probe-rs | Headless test, token check |
-| **Wokwi simulator**: creates a RustRover Remote Debug (GDB) configuration from `wokwi.toml` for the Wokwi plugin's GDB server | Tools → probe-rs | Headless: configuration created and serialized |
-| embedded-test crates detected; `cargo test` through the probe-rs runner feeds RustRover's test tree | Settings, test gutter | Detection test; probe-rs accepts IntelliJ's libtest flags (from its source) |
+## What you get
+
+- **Debugging through probe-rs** for Cargo run configurations, picked up from the `probe-rs run --chip …` runner in
+  `.cargo/config.toml` that most embedded templates already have: breakpoints, stepping, variables and hovers in
+  RustRover's own debugger, and flashing with a progress bar (only changed flash sectors are reprogrammed).
+- **RTT tabs**, one per channel, with defmt levels colored, `src/main.rs:42` locations clickable, a level filter, and an
+  input line for the target's down channel. `probe-rs run` output in the **Run** window gets the same colors and links.
+- A **probe-rs tab** in the debug session with what RustRover's Variables view leaves out: the CPU registers, the chip's
+  peripherals from its SVD file, and statics. Field values are decoded from the SVD (`PMUXE` shows **G**, "Peripheral
+  function G selected", not `0x6`), and pin registers show pins (`DIR0` on a SAM chip shows **PA20**, `GPIO_OUT` on an
+  RP2040 **GPIO25**). Changed values are highlighted after each step, and statics and registers go to Live Watch with a
+  right-click.
+- **SVD files** are found online on request, from the Rust PAC projects (atsamd-rs, rp-rs) or
+  [cmsis-svd-data](https://github.com/cmsis-svd/cmsis-svd-data), and stored in the project.
+- A **Peripherals** tool window to browse and edit registers and fields, and **Live Watch** to chart globals or
+  addresses while the target runs.
+- **Errors with a fix attached:** no probe, several probes ("Use this probe"), USB permissions (the udev command), an
+  unknown chip, locked flash, and so on.
+- Also: Attach to Running Target, a remote probe-rs server, settings per run configuration, core dumps, a Wokwi debug
+  configuration, and Tools → probe-rs → **Copy probe-rs Diagnostics** for bug reports.
 
 <p>
   <img src="docs/screenshots/rtt-console.png" alt="RTT console with colored defmt levels and clickable source locations" width="640"><br>
@@ -35,8 +40,27 @@ tested against RustRover 2026.3 (263.7307.214) without a board. See [What's veri
   <img src="docs/screenshots/settings.png" alt="probe-rs settings page" width="640">
 </p>
 
-Rendered headlessly by the `*InRustRoverTest` tests. The offscreen renderer leaves out icons, the chip completion
-field and the settings table's header and toolbar; they should appear in the real IDE.
+These are rendered headlessly by the `*InRustRoverTest` tests, with made-up data; the real thing has icons.
+
+## Getting started
+
+You need RustRover 2026.3 or later and probe-rs 0.24 or later (`cargo binstall probe-rs-tools`, or Tools → probe-rs →
+Install or Update probe-rs from the IDE). On Linux, the probe also needs probe-rs's udev rules; the plugin offers the
+command when it runs into a permission error.
+
+1. Build the plugin with `./gradlew buildPlugin` and install `build/distributions/probe-rs-rustrover-0.1.0.zip` via
+   Settings → Plugins → ⚙ → Install Plugin from Disk.
+2. Open a firmware project whose `.cargo/config.toml` has a probe-rs runner, e.g.:
+
+   ```toml
+   [target.'cfg(all(target_arch = "arm", target_os = "none"))']
+   runner = "probe-rs run --chip ATSAMD21G18AU"
+   ```
+
+3. Click **Debug** on the `fn main` gutter icon. The first session offers to download the chip's SVD file.
+
+Note that updates need an IDE restart: finished debug sessions keep their tabs (and RustRover keeps the driver that
+started them), so the plugin can't be unloaded cleanly while any of them is open.
 
 ## How it works
 
@@ -46,78 +70,72 @@ Cargo Debug ─▶ RsDebugRunner ─▶ ProbeRsDriverConfigurationProvider (org.
                                         └─ RelayMain child process ──stdio──▶ probe-rs dap-server [--host …]
                                               ⇅ side channel (loopback socket + token)
                                            ProbeRsSessionUi / ProbeRsSessions:
-                                             RTT tabs · progress · notifications
+                                             RTT and probe-rs tabs · progress · notifications
                                              Peripherals, Live Watch, RTT input, core dumps ─▶ DAP requests via the relay
 ```
 
-RustRover's DAP client drops probe-rs's custom events and standard progress events, and gives plugins no way to send
-their own requests. The relay sits between the two: it answers probe-rs's RTT handshake, forwards RTT data, progress and
-messages to the IDE over a side channel, and turns IDE commands (read/write memory, evaluate, RTT write) into DAP
-requests with its own sequence numbers. It also keeps the last session's traffic for diagnostics.
+RustRover already speaks the Debug Adapter Protocol, and probe-rs has a DAP server, so most of the work happens in a
+small relay that sits between the two. It exists because the two don't quite agree on a number of things:
+
+- RustRover drops probe-rs's own events (RTT channels and data, messages), so the relay answers probe-rs's RTT handshake
+  and forwards the data to the IDE over a side channel.
+- RustRover doesn't announce progress support, so probe-rs only printed `FLASHING:` lines; the relay asks for progress
+  events on its behalf.
+- RustRover sends hovers and watches without an `evaluate` context, which probe-rs answers with
+  `<invalid expression "led">`; the relay adds one.
+- RustRover only shows the locals scope, and the first scope with hint `registers` as its Registers node. probe-rs gives
+  that hint to the SVD peripherals as well (and lists them first), so the relay renames it, and the probe-rs tab shows
+  the remaining scopes.
+- RustRover asks for the stack and the scopes twice on every stop, and over a slow probe each answer costs 130 to
+  150 ms; the relay answers the repeats from a cache.
+- Tool windows have no way to send their own DAP requests, so the relay sends them (memory reads and writes, RTT input,
+  scopes) with sequence numbers of its own, and holds them back until probe-rs has launched.
+
+The relay also keeps the last session's traffic in `log/probe-rs/last-session.log` of the IDE's log directory, which is
+where most of the above was found.
 
 Per-run-configuration settings live in the project's probe-rs settings, keyed by configuration name: Cargo run
-configurations don't persist plugin data, and their editor has no room for extension tabs. The Rust plugin's debugger
-extension point isn't told which configuration it is debugging, so `ProbeRsExecutionListener` records the launch.
+configurations don't persist plugin data, and the Rust plugin doesn't tell the debugger extension point which
+configuration it is debugging (`ProbeRsExecutionListener` records the launch instead).
 
-## What's verified
+## Limits
 
-- **On hardware** (Arduino MKR WiFi 1010, ATSAMD21G18A, CMSIS-DAP probe, probe-rs 0.32.0, licensed RustRover 2026.3,
-  Linux): the plugin loads in the production IDE, Debug on a Cargo example launches through the relay, the firmware is
-  flashed with a progress bar, and defmt logs show up decoded in the RTT tab. The project was detected with the real TOML
-  parser, so the production IDE gives access to the `visibility="internal"` modules the plugin builds on.
-- **Compiles and loads** against RustRover 2026.3, including the `visibility="internal"` modules it builds on (test mode).
-- **85 tests:** parsers (Cargo/TOML, defmt, SVD, ELF, probe-rs output, wokwi.toml), launch JSON (field names from
-  probe-rs's source), error advice, register and watch decoding, relay routing and commands, **five end-to-end runs of
-  the relay as a real child process** against a scripted fake `probe-rs dap-server` (RTT, progress, failed launch,
-  memory read/write, RTT input, trace log), and headless RustRover tests for plugin loading, settings, run
-  configurations, Peripherals, Live Watch, Wokwi, the probe-rs CLI wrapper, diagnostics and screenshots.
-- **Plugin Verifier:** compatible with RustRover 2026.3; 12 usages of internal API, all in `DapDriverConfiguration`.
+- **Statics don't show on hover.** RustRover offers no value tooltip for statics and never asks the debugger; their
+  values are in the probe-rs tab and in Live Watch.
+- **RustRover's Memory View stays empty** so far; I haven't looked into why.
+- **Restart reflashes.** RustRover's restart starts a new session; probe-rs's own `restart` request isn't reachable,
+  because the IDE's DAP client sends it, not the plugin.
+- **One core at a time:** probe-rs debugs one core per session; the core index is a per-configuration setting.
+- **Core dumps can be written, not loaded:** probe-rs's debug server has no request for it.
+- **Wokwi goes through GDB,** since Wokwi exposes a GDB server, not a probe. On ESP32 (Xtensa) that needs Espressif's
+  GDB in the Rust toolchain settings.
+- **Internal API:** the plugin builds on `DapDriverConfiguration`, which JetBrains marks as internal and may change
+  without notice. A small public DAP-debugger extension point would fix that; RUST-12476 is the place to ask.
 
-**Not verified:** breakpoints and stepping, how probe-rs's values, registers and peripherals look in RustRover's
-debugger, the Peripherals and Live Watch views with real silicon, RTT input, attach, core dumps, other chips and probes,
-Wokwi with a real simulation, the test tree for embedded-test, installing probe-rs, macOS and Windows. CI and
-Marketplace publishing are configured but haven't run.
-
-## Not possible, or not done
-
-- **Restart:** RustRover's restart starts a new session, which reflashes (only changed sectors, with the default
-  setting). probe-rs's own `restart` request isn't reachable, because the IDE's DAP client sends it, not the plugin.
-- **Several cores at once:** probe-rs debugs one core per session; the core index is a per-configuration setting.
-- **Loading a core dump to debug it:** probe-rs's debug server can write core dumps but not load them.
-- **Wokwi through probe-rs:** Wokwi exposes a GDB server, not a probe, so it goes through RustRover's GDB debugger. On
-  ESP32 (Xtensa) that needs Espressif's GDB set in the Rust toolchain settings.
-- **Marketplace vendor details:** the vendor is "Markus Mayer"; add a public `url` or `email` to the `vendor` tag in `plugin.xml` if you want them on the Marketplace page.
-
-**Main risk:** `DapDriverConfiguration` is marked internal. JetBrains may change it without notice, and Marketplace
-review may object. Worth asking on RUST-12476 for a small public DAP-debugger extension point.
-
-## Running
+## Development
 
 ```bash
-./gradlew test                          # unit and end-to-end relay tests
+./gradlew test                          # unit tests and end-to-end relay tests (needs python3)
 ./gradlew test -PplatformTests=true     # adds the headless RustRover tests and screenshots (build/screenshots)
 ./gradlew verifyPlugin                  # Plugin Verifier (RustRover and CLion 2026.3)
 ./gradlew buildPlugin                   # build/distributions/probe-rs-rustrover-0.1.0.zip
 ./gradlew publishLocalRepo              # 0.1.0.<date>.<time> into a local plugin repository, see below
+./gradlew runIde                        # a sandboxed RustRover with the plugin
 ```
+
+By default the build downloads RustRover 2026.3 and a Java 25 toolchain. To build against a local install instead, set
+`rustRoverPath` in `~/.gradle/gradle.properties` (or pass `-PrustRoverPath=…`); `verifyPlugin` then runs offline against
+it.
 
 **Local plugin repository:** `publishLocalRepo` writes the zip and an `updatePlugins.xml` to
 `~/.local/share/probe-rs-rustrover/plugin-repo/` (or `-PlocalPluginRepo=…`). Add
 `file:///home/<you>/.local/share/probe-rs-rustrover/plugin-repo/updatePlugins.xml` once under Settings → Plugins → ⚙ →
-Manage Plugin Repositories; after that each `publishLocalRepo` shows up as an update of the installed plugin.
-
-By default the build downloads RustRover 2026.3 and a Java 25 toolchain (RustRover 2026.3 runs on Java 25). To use a
-local install instead, set `rustRoverPath` in `~/.gradle/gradle.properties`, or pass `-PrustRoverPath=…`. With a local
-install, `verifyPlugin` runs offline against it. The end-to-end tests need `python3`.
+Manage Plugin Repositories, and each `publishLocalRepo` shows up as an update of the installed plugin.
 
 **CI** (`.github/workflows/build.yml`) runs the tests, the Verifier and the build on every push. For a tag `v0.1.0` it
-signs and publishes to the Marketplace once these repository secrets are set: `CERTIFICATE_CHAIN`, `PRIVATE_KEY`,
-`PRIVATE_KEY_PASSWORD`, `PUBLISH_TOKEN`.
+signs and publishes to the Marketplace once the repository secrets `CERTIFICATE_CHAIN`, `PRIVATE_KEY`,
+`PRIVATE_KEY_PASSWORD` and `PUBLISH_TOKEN` are set.
 
-## Trying it on hardware
-
-1. Install the zip from `buildPlugin` into RustRover 2026.3 (Settings → Plugins → ⚙ → Install Plugin from Disk).
-2. Open a project whose `.cargo/config.toml` has a runner like `probe-rs run --chip RP2040`.
-3. Click **Debug** on the `fn main` gutter icon. Expect a "Flashing device" progress bar, then an **RTT** tab next to
-   the debugger's Console. Open **Peripherals** (needs an SVD file) and **Live Watch** from the tool window bars.
-4. If something fails: Tools → probe-rs → **Copy probe-rs Diagnostics**, and include it in the report.
+Research notes and the original plan are in [`docs/plan.md`](docs/plan.md). When something fails on your board,
+Tools → probe-rs → **Copy probe-rs Diagnostics** collects versions, detection, the launch configuration and the last
+session's DAP traffic (never the remote server's token); please include it in the issue.
