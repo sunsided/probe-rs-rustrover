@@ -135,6 +135,7 @@ class CargoConfigDetectorTest {
             "[workspace.dependencies]\ndefmt = \"1\"",
             "[target.'cfg(target_os = \"none\")'.dependencies]\ndefmt-rtt = \"1\"",
             "[dependencies]\ndefmt.workspace = true",
+            "[dev-dependencies]\ndefmt = \"0.3.10\"\ndefmt-rtt = \"0.4.1\"",
         ).forEach { manifest ->
             assertEquals(manifest, RttDataFormat.DEFMT, CargoConfigDetector.detect(config, manifest).probeRs?.rttFormat)
         }

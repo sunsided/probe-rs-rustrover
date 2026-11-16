@@ -55,10 +55,11 @@ object CargoConfigDetector {
 
         val usesDefmt = cargoToml?.let { text ->
             val manifest = runCatching { toml.readTree(text) }.getOrNull() ?: return@let Regex("""(?m)^\s*defmt(-rtt)?\s*=""").containsMatchIn(text)
+            // dev-dependencies too: examples and tests often bring defmt in only there.
             val tables = buildList {
-                add(manifest.path("dependencies"))
+                add(manifest.path("dependencies")); add(manifest.path("dev-dependencies"))
                 add(manifest.path("workspace").path("dependencies"))
-                manifest.path("target").properties().forEach { (_, t) -> add(t.path("dependencies")) }
+                manifest.path("target").properties().forEach { (_, t) -> add(t.path("dependencies")); add(t.path("dev-dependencies")) }
             }
             tables.any { it.has("defmt") || it.has("defmt-rtt") }
         } ?: false
