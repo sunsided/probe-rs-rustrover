@@ -22,6 +22,10 @@ class ProbeRsSession(
     @Volatile var debugSession: XDebugSession? = null
         internal set
 
+    /** The firmware ELF being debugged, once probe-rs has been asked to launch it. */
+    @Volatile var programBinary: String? = null
+        internal set
+
     val isConnected: Boolean get() = channel?.isConnected == true
 
     /** Reads target memory through probe-rs. Works while halted and, for most cores, while running. */

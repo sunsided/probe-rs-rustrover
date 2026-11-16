@@ -29,6 +29,8 @@
         <toolWindow id="Peripherals" anchor="right" secondary="false" canCloseContents="false"
                     factoryClass="dev.proberover.peripherals.PeripheralsToolWindowFactory"/>
         <postStartupActivity implementation="dev.proberover.startup.ProbeRsStartupActivity"/>
+        <toolWindow id="Live Watch" anchor="bottom" secondary="true" canCloseContents="false"
+                    factoryClass="dev.proberover.watch.LiveWatchToolWindowFactory"/>
         <consoleFilterProvider implementation="dev.proberover.defmt.DefmtConsoleFilterProvider"/>
         <projectConfigurable parentId="build" id="dev.proberover.settings" displayName="probe-rs"
                              instance="dev.proberover.settings.ProbeRsConfigurable"/>
@@ -47,6 +49,9 @@
             <action id="dev.proberover.CopyUdevCommand" class="dev.proberover.actions.CopyUdevRulesCommandAction"
                     text="Copy udev Rules Setup Command"
                     description="Copy the command that installs probe-rs's udev rules (Linux)"/>
+            <action id="dev.proberover.CreateWokwiDebugConfiguration" class="dev.proberover.wokwi.CreateWokwiDebugConfigurationAction"
+                    text="Create Wokwi Debug Configuration"
+                    description="Create a Remote Debug configuration that attaches GDB to the Wokwi simulator (from wokwi.toml)"/>
             <action id="dev.proberover.SaveCoreDump" class="dev.proberover.actions.SaveCoreDumpAction"
                     text="Save Core Dump" description="Save registers and RAM of the halted target with probe-rs"/>
             <action id="dev.proberover.CopyDiagnostics" class="dev.proberover.actions.CopyDiagnosticsAction"

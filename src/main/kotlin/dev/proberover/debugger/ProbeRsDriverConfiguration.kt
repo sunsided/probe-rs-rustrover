@@ -46,20 +46,27 @@ class ProbeRsDriverConfiguration(
 ) {
     override fun getDriverName(): String = "probe-rs"
 
-    override fun getDapLaunchOptions(commandLine: GeneralCommandLine): Map<String, Any> =
-        LaunchConfigBuilder.launch(target, commandLine.exePath, commandLine.workDirectory?.path ?: project.basePath)
+    /** The IDE-side session for this driver, created with the relay command line. */
+    @Volatile private var session: ProbeRsSession? = null
+
+    override fun getDapLaunchOptions(commandLine: GeneralCommandLine): Map<String, Any> {
+        session?.programBinary = commandLine.exePath
+        return LaunchConfigBuilder.launch(target, commandLine.exePath, commandLine.workDirectory?.path ?: project.basePath)
+    }
 
     override fun getDapAttachOptions(pid: Int): Map<String, Any> =
         LaunchConfigBuilder.attach(target, null, project.basePath)
 
-    override fun getDapAttachOptions(commandLine: GeneralCommandLine): Map<String, Any> =
-        LaunchConfigBuilder.attach(target, commandLine.exePath, commandLine.workDirectory?.path ?: project.basePath)
+    override fun getDapAttachOptions(commandLine: GeneralCommandLine): Map<String, Any> {
+        session?.programBinary = commandLine.exePath
+        return LaunchConfigBuilder.attach(target, commandLine.exePath, commandLine.workDirectory?.path ?: project.basePath)
+    }
 
     override fun getCommunicationMethod(): DapCommunicationMethod = DapCommunicationMethod.Stdio
 
     override fun createDriverCommandLine(driver: DebuggerDriver, architectureType: ArchitectureType): GeneralCommandLine {
         // One side channel per debug session: RTT tabs, flashing progress and error notifications.
-        val session = ProbeRsSession(project, target, configurationName)
+        val session = ProbeRsSession(project, target, configurationName).also { this.session = it }
         val channel = LaunchChannel(ProbeRsSessionUi(session))
         return relayCommandLine(listOf(probeRsExecutable, "dap-server") + serverArguments, channel.port to channel.token, traceFile())
             .withWorkDirectory(project.basePath)
