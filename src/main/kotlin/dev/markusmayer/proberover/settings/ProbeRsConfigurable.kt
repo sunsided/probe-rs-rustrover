@@ -69,6 +69,13 @@ class ProbeRsConfigurable(private val project: Project) : BoundConfigurable("pro
                         .comment("For the Peripherals view and the debugger's Peripherals scope." +
                             (service.findSvdFiles().takeIf { it.isNotEmpty() }?.let { files -> " Found in the project: " + files.take(3).joinToString { "<code>${it.name}</code>" } } ?: ""))
                 }
+                row("SVD download folder:") {
+                    textFieldWithBrowseButton(FileChooserDescriptorFactory.createSingleFolderDescriptor(), project)
+                        .align(AlignX.FILL)
+                        .bindText({ settings.svdDownloadFolder.orEmpty() }, { settings.svdDownloadFolder = it.trim().ifEmpty { null } })
+                        .comment("Where Tools → probe-rs → Download SVD File saves it. Relative to the project; " +
+                            "empty means <code>${dev.markusmayer.proberover.svd.SvdDownload.DEFAULT_FOLDER}</code>.")
+                }
                 row {
                     checkBox("Only reprogram flash that changed").bindSelected(settings::skipUnchangedFlash)
                         .comment("probe-rs compares the flash contents first. Faster for small changes.")

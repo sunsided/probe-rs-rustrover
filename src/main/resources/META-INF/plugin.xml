@@ -52,6 +52,8 @@
             <action id="dev.markusmayer.proberover.CreateWokwiDebugConfiguration" class="dev.markusmayer.proberover.wokwi.CreateWokwiDebugConfigurationAction"
                     text="Create Wokwi Debug Configuration"
                     description="Create a Remote Debug configuration that attaches GDB to the Wokwi simulator (from wokwi.toml)"/>
+            <action id="dev.markusmayer.proberover.DownloadSvd" class="dev.markusmayer.proberover.svd.DownloadSvdAction"
+                    text="Download SVD File" description="Find the chip's SVD file on GitHub (atsamd-rs, rp-rs, cmsis-svd-data) and use it"/>
             <action id="dev.markusmayer.proberover.SaveCoreDump" class="dev.markusmayer.proberover.actions.SaveCoreDumpAction"
                     text="Save Core Dump" description="Save registers and RAM of the halted target with probe-rs"/>
             <action id="dev.markusmayer.proberover.CopyDiagnostics" class="dev.markusmayer.proberover.actions.CopyDiagnosticsAction"

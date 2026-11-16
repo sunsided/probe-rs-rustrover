@@ -71,6 +71,7 @@ class ProbeRsSessionUi(private val session: ProbeRsSession) : SideEventListener 
         edt {
             findSession()
             ProbeRsSessions.get(project).started(session)
+            if (session.target.svdFile == null) dev.markusmayer.proberover.svd.SvdDownload.offerIfMissing(project, session.target.chip)
         }
     }
 

@@ -33,6 +33,10 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         var chipOverride: String? = null
         var probeRsPath: String? = null
         var svdFile: String? = null
+        /** Where downloaded SVD files go; relative to the project. Null means [dev.markusmayer.proberover.svd.SvdDownload.DEFAULT_FOLDER]. */
+        var svdDownloadFolder: String? = null
+        /** The user doesn't want to be offered an SVD download. */
+        var svdOfferDismissed: Boolean = false
         /** `--probe` selector (`VID:PID[:SERIAL]`) when several probes are connected. */
         var probe: String? = null
         var skipUnchangedFlash: Boolean = true
@@ -66,12 +70,16 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         val base = detected.probeRs ?: chip?.takeIf { detected.isEmbeddedTarget }?.let { ProbeRsTarget(chip = it) } ?: return null
         val projectLevel = base.copy(
             chip = state.chipOverride?.takeIf { it.isNotBlank() } ?: base.chip,
-            svdFile = state.svdFile?.takeIf { it.isNotBlank() } ?: base.svdFile,
+            svdFile = state.svdFile?.takeIf { it.isNotBlank() }?.let(::absolute) ?: base.svdFile,
             probe = state.probe?.takeIf { it.isNotBlank() } ?: base.probe,
             skipUnchangedFlash = state.skipUnchangedFlash,
         )
         return run?.applyTo(projectLevel) ?: projectLevel
     }
+
+    /** Settings may hold paths relative to the project (e.g. a downloaded SVD); probe-rs needs them absolute. */
+    private fun absolute(path: String): String =
+        File(path).let { if (it.isAbsolute) it.path else File(project.basePath ?: "", path).path }
 
     /** Extra `probe-rs dap-server` arguments: `--host`/`--token` for a remote probe-rs server. */
     fun serverArguments(): List<String> {

@@ -32,6 +32,7 @@ import dev.markusmayer.proberover.svd.SvdField
 import dev.markusmayer.proberover.svd.SvdParser
 import dev.markusmayer.proberover.svd.SvdPeripheral
 import dev.markusmayer.proberover.svd.SvdRegister
+import dev.markusmayer.proberover.svd.SvdDownload
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
@@ -108,6 +109,17 @@ class PeripheralsPanel(private val project: Project) : Disposable {
                 override fun actionPerformed(e: AnActionEvent) { devicePath = null; loadDevice() }
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
             },
+            object : AnAction("Choose SVD File…", "Use an SVD file from disk", AllIcons.Actions.MenuOpen) {
+                override fun actionPerformed(e: AnActionEvent) = SvdDownload.chooseLocal(project, ::svdChanged)
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            },
+            object : AnAction("Download SVD File…", "Pick the chip's SVD file from atsamd-rs, rp-rs or cmsis-svd-data", AllIcons.Actions.Download) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    currentChip()?.let { SvdDownload.run(project, it, ::svdChanged) }
+                }
+                override fun update(e: AnActionEvent) { e.presentation.isEnabled = currentChip() != null }
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            },
         )
         val toolbar = ActionManager.getInstance().createActionToolbar("ProbeRsPeripherals", group, true)
         toolbar.targetComponent = tree
@@ -183,8 +195,13 @@ class PeripheralsPanel(private val project: Project) : Disposable {
             found.take(5).forEach { file ->
                 text.appendLine(file.name, SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
                     project.service<ProbeRsProjectService>().getState().svdFile = file.path
-                    loadDevice()
+                    svdChanged()
                 }
+            }
+        }
+        currentChip()?.let { chip ->
+            text.appendLine("Download the SVD file for $chip", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+                SvdDownload.run(project, chip, ::svdChanged)
             }
         }
         text.appendLine("Choose one in Settings", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
@@ -193,8 +210,24 @@ class PeripheralsPanel(private val project: Project) : Disposable {
         }
     }
 
+    private fun currentChip(): String? =
+        ProbeRsSessions.get(project).active?.target?.chip ?: project.service<ProbeRsProjectService>().resolveTarget()?.chip
+
+    /** The user picked another SVD file here: show it now, even while a session started with the old one runs. */
+    private fun svdChanged() {
+        ApplicationManager.getApplication().invokeLater({
+            chosenSvd = project.service<ProbeRsProjectService>().getState().svdFile
+            devicePath = null
+            loadDevice()
+        }, ModalityState.any())
+    }
+
+    /** Set by [svdChanged]; wins over the running session's SVD file. */
+    private var chosenSvd: String? = null
+
     private fun svdPath(): String? {
-        val configured = ProbeRsSessions.get(project).active?.target?.svdFile
+        val configured = chosenSvd
+            ?: ProbeRsSessions.get(project).active?.target?.svdFile
             ?: project.service<ProbeRsProjectService>().getState().svdFile
             ?: project.service<ProbeRsProjectService>().findSvdFiles().singleOrNull()?.path
             ?: return null
