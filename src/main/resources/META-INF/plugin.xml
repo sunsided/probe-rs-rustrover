@@ -20,41 +20,41 @@
     <extensions defaultExtensionNs="org.rust">
         <debugger.driverConfigurationProvider
                 id="ProbeRsDriverConfigurationProvider"
-                implementation="dev.proberover.debugger.ProbeRsDriverConfigurationProvider"
+                implementation="dev.markusmayer.proberover.debugger.ProbeRsDriverConfigurationProvider"
                 order="first"/>
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="probe-rs" displayType="BALLOON"/>
         <toolWindow id="Peripherals" anchor="right" secondary="false" canCloseContents="false"
-                    factoryClass="dev.proberover.peripherals.PeripheralsToolWindowFactory"/>
-        <postStartupActivity implementation="dev.proberover.startup.ProbeRsStartupActivity"/>
+                    factoryClass="dev.markusmayer.proberover.peripherals.PeripheralsToolWindowFactory"/>
+        <postStartupActivity implementation="dev.markusmayer.proberover.startup.ProbeRsStartupActivity"/>
         <toolWindow id="Live Watch" anchor="bottom" secondary="true" canCloseContents="false"
-                    factoryClass="dev.proberover.watch.LiveWatchToolWindowFactory"/>
-        <consoleFilterProvider implementation="dev.proberover.defmt.DefmtConsoleFilterProvider"/>
-        <projectConfigurable parentId="build" id="dev.proberover.settings" displayName="probe-rs"
-                             instance="dev.proberover.settings.ProbeRsConfigurable"/>
+                    factoryClass="dev.markusmayer.proberover.watch.LiveWatchToolWindowFactory"/>
+        <consoleFilterProvider implementation="dev.markusmayer.proberover.defmt.DefmtConsoleFilterProvider"/>
+        <projectConfigurable parentId="build" id="dev.markusmayer.proberover.settings" displayName="probe-rs"
+                             instance="dev.markusmayer.proberover.settings.ProbeRsConfigurable"/>
     </extensions>
 
     <actions>
-        <action id="dev.proberover.AttachToRunningTarget" class="dev.proberover.actions.AttachToRunningTargetAction"
+        <action id="dev.markusmayer.proberover.AttachToRunningTarget" class="dev.markusmayer.proberover.actions.AttachToRunningTargetAction"
                 text="Attach to Running Target with probe-rs"
                 description="Debug the selected Cargo configuration without flashing or resetting the chip"
                 icon="AllIcons.Debugger.AttachToProcess">
             <add-to-group group-id="RunMenu" anchor="after" relative-to-action="Debug"/>
         </action>
-        <group id="dev.proberover.ToolsGroup" text="probe-rs" popup="true">
-            <action id="dev.proberover.InstallProbeRs" class="dev.proberover.actions.InstallProbeRsAction"
+        <group id="dev.markusmayer.proberover.ToolsGroup" text="probe-rs" popup="true">
+            <action id="dev.markusmayer.proberover.InstallProbeRs" class="dev.markusmayer.proberover.actions.InstallProbeRsAction"
                     text="Install or Update probe-rs" description="Install probe-rs-tools with cargo"/>
-            <action id="dev.proberover.CopyUdevCommand" class="dev.proberover.actions.CopyUdevRulesCommandAction"
+            <action id="dev.markusmayer.proberover.CopyUdevCommand" class="dev.markusmayer.proberover.actions.CopyUdevRulesCommandAction"
                     text="Copy udev Rules Setup Command"
                     description="Copy the command that installs probe-rs's udev rules (Linux)"/>
-            <action id="dev.proberover.CreateWokwiDebugConfiguration" class="dev.proberover.wokwi.CreateWokwiDebugConfigurationAction"
+            <action id="dev.markusmayer.proberover.CreateWokwiDebugConfiguration" class="dev.markusmayer.proberover.wokwi.CreateWokwiDebugConfigurationAction"
                     text="Create Wokwi Debug Configuration"
                     description="Create a Remote Debug configuration that attaches GDB to the Wokwi simulator (from wokwi.toml)"/>
-            <action id="dev.proberover.SaveCoreDump" class="dev.proberover.actions.SaveCoreDumpAction"
+            <action id="dev.markusmayer.proberover.SaveCoreDump" class="dev.markusmayer.proberover.actions.SaveCoreDumpAction"
                     text="Save Core Dump" description="Save registers and RAM of the halted target with probe-rs"/>
-            <action id="dev.proberover.CopyDiagnostics" class="dev.proberover.actions.CopyDiagnosticsAction"
+            <action id="dev.markusmayer.proberover.CopyDiagnostics" class="dev.markusmayer.proberover.actions.CopyDiagnosticsAction"
                     text="Copy probe-rs Diagnostics"
                     description="Copy versions, detection, launch arguments and the last session's DAP traffic for a bug report"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
@@ -62,9 +62,9 @@
     </actions>
 
     <projectListeners>
-        <listener class="dev.proberover.runconfig.ProbeRsExecutionListener"
+        <listener class="dev.markusmayer.proberover.runconfig.ProbeRsExecutionListener"
                   topic="com.intellij.execution.ExecutionListener"/>
-        <listener class="dev.proberover.runconfig.OverridesFollowRenames"
+        <listener class="dev.markusmayer.proberover.runconfig.OverridesFollowRenames"
                   topic="com.intellij.execution.RunManagerListener"/>
     </projectListeners>
 </idea-plugin>

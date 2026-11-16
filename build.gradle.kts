@@ -29,7 +29,7 @@ repositories {
 val platformTests = providers.gradleProperty("platformTests").map(String::toBoolean).getOrElse(false)
 
 sourceSets.test {
-    kotlin { if (!platformTests) exclude("dev/proberover/*InRustRoverTest.kt") }
+    kotlin { if (!platformTests) exclude("dev/markusmayer/proberover/*InRustRoverTest.kt") }
 }
 
 dependencies {
