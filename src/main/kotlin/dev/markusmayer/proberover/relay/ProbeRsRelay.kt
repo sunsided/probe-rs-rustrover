@@ -43,6 +43,10 @@ class ProbeRsRelay(
     /** Requests sent for IDE commands: DAP seq → command id. */
     private val pendingCommands = java.util.concurrent.ConcurrentHashMap<Int, Long>()
     private val stackCache = StackCache()
+    private val scopeTracker = ScopeTracker()
+    /** IDE commands that arrived before `launch`/`attach` succeeded; probe-rs rejects anything before that handshake. */
+    private val waiting = mutableListOf<JsonObject>()
+    private var targetReady = false
 
     init {
         side.onCommand(::handleCommand)
@@ -53,6 +57,9 @@ class ProbeRsRelay(
      * as a `reply` event. Visible for tests.
      */
     fun handleCommand(command: JsonObject) {
+        synchronized(waiting) {
+            if (!targetReady) { waiting += command; return }
+        }
         val id = command.get("id")?.asLong ?: return
         val (dapCommand, arguments) = when (command.str("op")) {
             "readMemory" -> "readMemory" to JsonObject().apply {
@@ -67,21 +74,23 @@ class ProbeRsRelay(
                 addProperty("expression", command.str("expression"))
                 addProperty("context", command.str("context") ?: "repl")
             }
+            // The scopes of the frame RustRover shows, and a scope's or variable's children: for the probe-rs tab.
+            "scopes" -> "scopes" to JsonObject().apply {
+                addProperty("frameId", scopeTracker.frameId ?: return fail(id, "No stack frame yet: the target is running"))
+            }
+            "variables" -> "variables" to JsonObject().apply {
+                addProperty("variablesReference", command.get("reference")?.asInt ?: 0)
+                command.get("start")?.let { add("start", it) }
+                command.get("count")?.let { add("count", it) }
+            }
             "rtt-write" -> "evaluate" to JsonObject().apply {
                 // probe-rs's REPL: `rtt write <channel> <data>`
                 addProperty("expression", "rtt write ${command.get("channel")?.asInt ?: 0} ${command.str("data").orEmpty()}")
                 addProperty("context", "repl")
             }
-            else -> {
-                side.send(sideEvent("reply") {
-                    addProperty("id", id)
-                    addProperty("success", false)
-                    addProperty("message", "Unknown command ${command.str("op")}")
-                })
-                return
-            }
+            else -> return fail(id, "Unknown command ${command.str("op")}")
         }
-        if (dapCommand != "readMemory") stackCache.invalidate()
+        if (dapCommand !in READ_ONLY_COMMANDS) stackCache.invalidate()
         val seq = ownSeq.getAndIncrement()
         pendingCommands[seq] = id
         val request = JsonObject().apply {
@@ -117,7 +126,9 @@ class ProbeRsRelay(
             return obj.toString().also { trace("→probe-rs", it) }
         }
         val before = obj.toString()
+        if (obj.str("command") == "scopes") scopeTracker.onScopesRequest(obj)
         stackCache.onRequest(obj)?.let { body ->
+            if (obj.str("command") == "scopes") scopeTracker.onScopes(body)
             val response = JsonObject().apply {
                 addProperty("seq", ownSeq.getAndIncrement())
                 addProperty("type", "response")
@@ -168,11 +179,19 @@ class ProbeRsRelay(
                 if (failed && (command == "launch" || command == "attach")) {
                     side.send(sideEvent("launch-failed") { addProperty("message", errorText(obj)) })
                 }
-                return stackCache.onResponse(obj)?.toString() ?: raw
+                if (!failed && (command == "launch" || command == "attach")) {
+                    val queued = synchronized(waiting) { targetReady = true; waiting.toList().also { waiting.clear() } }
+                    queued.forEach(::handleCommand)
+                }
+                // Rewritten in place before the stack cache copies it, so cached answers carry the change too.
+                val scopesChanged = command == "scopes" && !failed &&
+                    obj.getAsJsonObject("body")?.let(scopeTracker::onScopes) == true
+                return stackCache.onResponse(obj)?.toString() ?: if (scopesChanged) obj.toString() else raw
             }
             "event" -> {
                 val event = obj.str("event") ?: return raw
                 stackCache.onEvent(event)
+                if (event == "stopped" || event == "continued") scopeTracker.onRunStateChanged()
                 val body = obj.getAsJsonObject("body") ?: JsonObject()
                 val seq = obj.get("seq")?.asInt ?: 0
                 when (event) {
@@ -258,6 +277,14 @@ class ProbeRsRelay(
         })
     }.toString()
 
+    private fun fail(id: Long, message: String) {
+        side.send(sideEvent("reply") {
+            addProperty("id", id)
+            addProperty("success", false)
+            addProperty("message", message)
+        })
+    }
+
     private fun sideEvent(kind: String, fill: JsonObject.() -> Unit) = JsonObject().apply {
         addProperty("kind", kind)
         fill()
@@ -276,6 +303,9 @@ class ProbeRsRelay(
     companion object {
         /** Requests the relay sends itself use sequence numbers from here, far above anything the IDE uses. */
         const val OWN_SEQ_BASE = 1_000_000
+
+        /** IDE commands that leave the target as it is, so the stack cache stays valid. */
+        private val READ_ONLY_COMMANDS = setOf("readMemory", "scopes", "variables")
 
         private val PROGRESS_KINDS = mapOf(
             "progressStart" to "progress-start",

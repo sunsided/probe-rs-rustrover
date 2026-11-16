@@ -48,6 +48,13 @@ class ProbeRsSession(
             addProperty("data", text)
         }.thenApply { }
 
+    /** probe-rs's scopes of the stack frame RustRover shows (`{"scopes": […]}`). Fails while the target runs. */
+    fun scopes(): CompletableFuture<com.google.gson.JsonObject> = request("scopes") {}
+
+    /** The children of a scope or variable (`{"variables": […]}`), by DAP `variablesReference`. */
+    fun variables(reference: Int): CompletableFuture<com.google.gson.JsonObject> =
+        request("variables") { addProperty("reference", reference) }
+
     private fun request(op: String, fill: com.google.gson.JsonObject.() -> Unit) =
         channel?.request(op, fill) ?: CompletableFuture.failedFuture(ProbeRsCommandException("The probe-rs session isn't connected yet"))
 }

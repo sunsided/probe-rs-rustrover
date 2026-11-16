@@ -70,6 +70,7 @@ class ProbeRsSessionUi(private val session: ProbeRsSession) : SideEventListener 
         session.channel = channel
         edt {
             findSession()
+            scopesTab()
             ProbeRsSessions.get(project).started(session)
             if (session.target.svdFile == null) dev.markusmayer.proberover.svd.SvdDownload.offerIfMissing(project, session.target.chip)
         }
@@ -115,6 +116,21 @@ class ProbeRsSessionUi(private val session: ProbeRsSession) : SideEventListener 
         panel.printLine(line)
     }
 
+    private var scopesPanel: ScopesPanel? = null
+
+    /** The **probe-rs** tab with the scopes RustRover doesn't show: CPU registers, SVD peripherals, statics. */
+    private fun scopesTab(): ScopesPanel? {
+        scopesPanel?.let { return it }
+        val ui = findSession()?.ui ?: return null
+        val panel = ScopesPanel(session)
+        val content = ui.createContent("dev.markusmayer.proberover.scopes", panel.component, "probe-rs", AllIcons.Debugger.Value, null)
+        content.isCloseable = false
+        Disposer.register(content, panel)
+        ui.addContent(content)
+        scopesPanel = panel
+        return panel
+    }
+
     private fun console(channel: Int, name: String?): RttPanel? {
         consoles[channel]?.let { return it }
         val xSession = findSession() ?: return null
@@ -154,8 +170,14 @@ class ProbeRsSessionUi(private val session: ProbeRsSession) : SideEventListener 
         xSession = found
         session.debugSession = found
         found.addSessionListener(object : XDebugSessionListener {
-            override fun sessionPaused() = edt { ProbeRsSessions.get(project).publisher().targetHalted(session) }
-            override fun sessionResumed() = edt { ProbeRsSessions.get(project).publisher().targetResumed(session) }
+            override fun sessionPaused() = edt {
+                ProbeRsSessions.get(project).publisher().targetHalted(session)
+                scopesTab()?.halted()
+            }
+            override fun sessionResumed() = edt {
+                ProbeRsSessions.get(project).publisher().targetResumed(session)
+                scopesTab()?.resumed()
+            }
         })
         return found
     }

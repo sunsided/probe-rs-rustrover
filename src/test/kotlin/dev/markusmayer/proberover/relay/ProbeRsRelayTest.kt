@@ -87,6 +87,29 @@ class ProbeRsRelayTest {
     }
 
     @Test
+    fun `probe-rs tab commands - scopes of the frame RustRover shows, and variables by reference`() {
+        val toServer = ByteArrayOutputStream()
+        val side = CollectingSide()
+        val r = relay(toServer, side)
+        r.handleServerMessage("""{"seq":3,"type":"response","request_seq":2,"command":"launch","success":true}""")
+
+        r.handleCommand(json("""{"id":1,"op":"scopes"}"""))
+        assertEquals("no frame yet: answered right away", false, side.events.single()["success"].asBoolean)
+        assertEquals(0, toServer.size())
+
+        r.handleClientMessage("""{"seq":7,"type":"request","command":"scopes","arguments":{"frameId":6729}}""")
+        r.handleCommand(json("""{"id":2,"op":"scopes"}"""))
+        r.handleCommand(json("""{"id":3,"op":"variables","reference":1}"""))
+        val reader = DapReader(ByteArrayInputStream(toServer.toByteArray()))
+        val scopes = json(reader.read())
+        assertEquals("scopes", scopes["command"].asString)
+        assertEquals(6729, scopes["arguments"].asJsonObject["frameId"].asInt)
+        val variables = json(reader.read())
+        assertEquals("variables", variables["command"].asString)
+        assertEquals(1, variables["arguments"].asJsonObject["variablesReference"].asInt)
+    }
+
+    @Test
     fun `progress goes only to the side channel, failed launches are copied`() {
         val side = CollectingSide()
         val r = relay(side = side)
@@ -200,6 +223,11 @@ class ProbeRsRelayTest {
         val side = CollectingSide()
         val r = relay(toServer, side)
         r.handleCommand(JsonParser.parseString("""{"id":7,"op":"rtt-write","channel":1,"data":"led on"}""").asJsonObject)
+        assertEquals("held back until probe-rs has launched: it rejects requests before that", 0, toServer.size())
+        assertEquals(
+            """{"seq":3,"type":"response","request_seq":2,"command":"launch","success":true}""",
+            r.handleServerMessage("""{"seq":3,"type":"response","request_seq":2,"command":"launch","success":true}"""),
+        )
         val request = json(DapReader(ByteArrayInputStream(toServer.toByteArray())).read())
         assertEquals("evaluate", request["command"].asString)
         assertEquals("rtt write 1 led on", request["arguments"].asJsonObject["expression"].asString)
@@ -228,7 +256,12 @@ class ProbeRsRelayTest {
         val deadline = System.currentTimeMillis() + 10_000
         while (!channel.isConnected && System.currentTimeMillis() < deadline) Thread.sleep(20)
 
-        val moder = channel.request("readMemory") { addProperty("address", "0x40020000"); addProperty("count", 4) }.get(10, TimeUnit.SECONDS)
+        // A tool window reading before the session launched (e.g. an expanded Peripherals view): it waits for launch.
+        val early = channel.request("readMemory") { addProperty("address", "0x40020000"); addProperty("count", 4) }
+        ide.request("launch", """{"chip":"RP2040"}""")
+        assertEquals("launch", ide.next()["command"].asString)
+        ide.next(); ide.next() // RTT channel announcement, the warning
+        val moder = early.get(10, TimeUnit.SECONDS)
         assertEquals("AAAAqA==", moder["data"].asString) // 00 00 00 A8 little-endian = 0xA8000000
 
         channel.request("writeMemory") { addProperty("address", "0x40020000"); addProperty("data", "AQIDBA==") }.get(10, TimeUnit.SECONDS)
@@ -241,7 +274,7 @@ class ProbeRsRelayTest {
 
         assertEquals(0, ide.finish())
         channel.awaitClosed(10_000)
-        assertEquals("echo: hello board\n", events.single { it["kind"].asString == "rtt-data" }["data"].asString)
+        assertEquals("echo: hello board\n", events.last { it["kind"].asString == "rtt-data" }["data"].asString)
     }
 
     @Test(timeout = 30_000)

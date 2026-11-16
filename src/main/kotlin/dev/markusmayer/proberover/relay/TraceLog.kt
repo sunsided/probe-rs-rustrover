@@ -6,7 +6,7 @@ import java.io.File
  * The last DAP messages of a session, for bug reports: kept in memory and written to [file] every second and at the
  * end. Long messages are shortened.
  */
-class TraceLog(private val file: File, private val capacity: Int = 400, private val maxLength: Int = 1000) {
+class TraceLog(private val file: File, private val capacity: Int = 400, private val maxLength: Int = 20_000) {
     private val lines = ArrayDeque<String>()
     @Volatile private var dirty = false
 
