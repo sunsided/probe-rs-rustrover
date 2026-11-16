@@ -21,7 +21,16 @@ object ScopeRows {
         val location: String? = null,
         /** The full, unshortened value for the tooltip. */
         val fullValue: String? = null,
+        /** The number behind [value] when [value] is an enumerated value's name, e.g. `0x6` for `G`. */
+        val raw: String? = null,
+        /** The field's own description when [description] holds the enumerated value's. */
+        val fieldDescription: String? = null,
     )
+
+    /** What an SVD field's value means: the enumerated value's name and description, if the SVD has one. */
+    fun interface Decoder {
+        fun decode(registerAddress: Long, bitOffset: Int, bitWidth: Int, value: Long): Pair<String, String?>?
+    }
 
     private val AT = Regex("""^(.*?)\s*@\s*(0x[0-9A-Fa-f]+)(?::(\d+)\.\.(\d+))?\s*$""", RegexOption.DOT_MATCHES_ALL)
     private const val NOT_READ = "cannot be read without side effects"
@@ -30,7 +39,7 @@ object ScopeRows {
     /** probe-rs entries not worth a row: optimized-out vtables of trait objects. */
     fun isNoise(name: String, value: String): Boolean = name.endsWith("::{vtable}") && value.contains("optimized out")
 
-    fun row(name: String, value: String, type: String?, isScope: Boolean = false): Row {
+    fun row(name: String, value: String, type: String?, isScope: Boolean = false, decoder: Decoder? = null): Row {
         if (isScope) return Row(name, Kind.SCOPE, null)
         when (type) {
             "Peripheral Group" -> return Row(name, Kind.GROUP, null, description = value.ifBlank { null })
@@ -52,6 +61,14 @@ object ScopeRows {
         val description = if (svd) type else null
         if (raw.contains(NOT_READ)) return Row(name, kind, null, notRead = true, description = description, location = location)
 
+        if (kind == Kind.FIELD && decoder != null && raw.isNotEmpty() && raw.all { it == '0' || it == '1' }) {
+            val from = at!!.groupValues[3].toInt()
+            val meaning = decoder.decode(at.groupValues[2].removePrefix("0x").toLong(16), from, at.groupValues[4].toInt() - from, raw.toLong(2))
+            if (meaning != null) {
+                return Row(name, kind, meaning.first, description = meaning.second ?: description, location = location,
+                    raw = fieldValue(raw), fieldDescription = description)
+            }
+        }
         val shown = when {
             kind == Kind.FIELD -> fieldValue(raw)
             else -> raw

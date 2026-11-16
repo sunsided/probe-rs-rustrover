@@ -40,6 +40,28 @@ class ScopeRowsTest {
     }
 
     @Test
+    fun `fields with enumerated values in the SVD - the value's name and meaning`() {
+        val index = dev.markusmayer.proberover.svd.SvdFieldIndex(
+            dev.markusmayer.proberover.svd.SvdDevice("ATSAMD21G18A", listOf(dev.markusmayer.proberover.svd.SvdPeripheral(
+                "PORT", "Port Module", null, 0x41004400,
+                listOf(dev.markusmayer.proberover.svd.SvdRegister("PMUX6", null, 0x41004436, 8, dev.markusmayer.proberover.svd.Access.READ_WRITE, 0,
+                    listOf(dev.markusmayer.proberover.svd.SvdField("PMUXE", "Peripheral Multiplexing Even", 0, 4, dev.markusmayer.proberover.svd.Access.READ_WRITE,
+                        mapOf(6L to ("G" to "Peripheral function G selected")))))),
+            ))),
+        )
+        val decoder = ScopeRows.Decoder { address, offset, width, value -> index.field(address, offset, width)?.values?.get(value) }
+        assertEquals(
+            Row("PMUXE", Kind.FIELD, "G", description = "Peripheral function G selected", location = "0x41004436 [0..4]",
+                raw = "0x6", fieldDescription = "Peripheral Multiplexing Even"),
+            ScopeRows.row("PMUXE", "0110 @ 0x41004436:0..4", "Peripheral Multiplexing Even", decoder = decoder),
+        )
+        assertEquals("no enumerated value for it: the number", "0xF",
+            ScopeRows.row("PMUXE", "1111 @ 0x41004436:0..4", "Peripheral Multiplexing Even", decoder = decoder).value)
+        assertEquals("another field at the same address", "0x6",
+            ScopeRows.row("PMUXO", "0110 @ 0x41004436:4..8", "Peripheral Multiplexing Odd", decoder = decoder).value)
+    }
+
+    @Test
     fun `statics - one line, shortened, with the Rust type`() {
         val long = "[Vector; 28] = [\n\tVector {\n\t\t_handler: *raw unsafe extern \"C\" fn() = *raw unsafe extern \"C\" fn() @ 0x00000040,\n" +
             "\t\t_reserved: u32 = 4841\n\t},\n".repeat(10) + "]"

@@ -201,3 +201,62 @@ object SvdParser {
     private fun Element.child(tag: String) = elementChildren().firstOrNull { it.tagName == tag }
     private fun Element.text(tag: String) = child(tag)?.textContent?.trim()?.takeIf { it.isNotEmpty() }
 }
+
+/**
+ * Finds an SVD field by where it lives: register address, bit offset and width. probe-rs reports fields that way
+ * (`0x41004436:0..4`) but drops their enumerated values; its names for array and cluster registers differ from ours,
+ * the addresses don't.
+ */
+class SvdFieldIndex(device: SvdDevice) {
+    data class Located(val peripheral: SvdPeripheral, val register: SvdRegister, val field: SvdField)
+
+    private val fields: Map<Triple<Long, Int, Int>, Located> = buildMap {
+        for (p in device.peripherals) for (r in p.registers) for (f in r.fields) putIfAbsent(Triple(r.address, f.bitOffset, f.bitWidth), Located(p, r, f))
+    }
+
+    fun locate(registerAddress: Long, bitOffset: Int, bitWidth: Int): Located? = fields[Triple(registerAddress, bitOffset, bitWidth)]
+
+    fun field(registerAddress: Long, bitOffset: Int, bitWidth: Int): SvdField? = locate(registerAddress, bitOffset, bitWidth)?.field
+
+    /** What a field's value means: its enumerated value from the SVD, or for SAM port registers, the pins. */
+    fun meaning(registerAddress: Long, bitOffset: Int, bitWidth: Int, value: Long): Pair<String, String?>? {
+        val located = locate(registerAddress, bitOffset, bitWidth) ?: return null
+        located.field.values[value]?.let { return it }
+        return PinRegisters.pins(located, value)?.let { it to null }
+    }
+}
+
+/**
+ * Registers holding one bit per pin, where the SVD has no names for the bits; the pins as text for the probe-rs tab.
+ * - Microchip SAM (D/E/L/C): PORT's `DIR`, `OUT`, `IN` and their SET/CLR/TGL variants. Pins are P<group><bit>, the
+ *   groups 0x80 apart in PORT (group 0 = PA, 1 = PB, …).
+ * - RP2040: SIO's `GPIO_IN`, `GPIO_OUT`, `GPIO_OE` and their SET/CLR/XOR variants (GPIO0…29), and the `GPIO_HI_`
+ *   ones for the QSPI pins.
+ */
+object PinRegisters {
+    private val SAM_FIELDS = setOf("DIR", "DIRCLR", "DIRSET", "DIRTGL", "OUT", "OUTCLR", "OUTSET", "OUTTGL", "IN")
+    private const val SAM_GROUP_SIZE = 0x80L
+    private val RP2040_FIELD = Regex("""GPIO_(HI_)?(IN|OUT|OE)(_SET|_CLR|_XOR)?""")
+    /** GPIO_HI_* bits, RP2040 datasheet 2.3.1.7. */
+    private val RP2040_QSPI = listOf("QSPI_SCLK", "QSPI_SS", "QSPI_SD0", "QSPI_SD1", "QSPI_SD2", "QSPI_SD3")
+
+    fun pins(located: SvdFieldIndex.Located, value: Long): String? {
+        val (peripheral, register, field) = located
+        if (field.bitOffset != 0) return null
+        val names: (Int) -> String = when {
+            peripheral.name == "PORT" && field.name in SAM_FIELDS && field.bitWidth == 32 -> {
+                val group = ((register.address - peripheral.baseAddress) / SAM_GROUP_SIZE).toInt().takeIf { it in 0..25 } ?: return null
+                { bit -> "P${'A' + group}$bit" }
+            }
+            peripheral.name == "SIO" && RP2040_FIELD.matches(field.name) ->
+                if (field.name.startsWith("GPIO_HI_")) { bit -> RP2040_QSPI.getOrElse(bit) { "QSPI$it" } } else { bit -> "GPIO$bit" }
+            else -> return null
+        }
+        val pins = (0 until field.bitWidth).filter { (value ushr it) and 1L == 1L }.map(names)
+        return when {
+            pins.isEmpty() -> "none"
+            pins.size > 8 -> pins.take(8).joinToString(" ") + " +${pins.size - 8} more"
+            else -> pins.joinToString(" ")
+        }
+    }
+}

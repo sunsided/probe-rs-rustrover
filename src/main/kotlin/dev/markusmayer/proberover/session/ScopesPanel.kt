@@ -13,6 +13,8 @@ import com.intellij.ui.TreeUIHelper
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
+import dev.markusmayer.proberover.svd.SvdFieldIndex
+import dev.markusmayer.proberover.svd.SvdParser
 import java.awt.BorderLayout
 import javax.swing.Icon
 import javax.swing.JComponent
@@ -71,8 +73,22 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
         })
     }
 
+    /** Decodes field values with the SVD file's enumerated values, which probe-rs leaves out. Loaded on the first halt. */
+    @Volatile private var decoder: ScopeRows.Decoder? = null
+    private var decoderLoaded = false
+
     /** The target halted: update to the frame RustRover shows, once it has asked probe-rs for its scopes. */
-    fun halted() = refresh(attempt = 0)
+    fun halted() {
+        val svd = session.target.svdFile
+        if (decoderLoaded || svd == null) return refresh(attempt = 0)
+        decoderLoaded = true
+        ApplicationManager.getApplication().executeOnPooledThread {
+            decoder = runCatching { SvdFieldIndex(SvdParser.parse(java.io.File(svd))) }.getOrNull()?.let { index ->
+                ScopeRows.Decoder(index::meaning)
+            }
+            edt { refresh(attempt = 0) }
+        }
+    }
 
     fun resumed() {
         generation++
@@ -103,7 +119,13 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
     private fun load(node: DefaultMutableTreeNode) {
         val entry = item(node)?.entry ?: return
         val gen = generation
-        session.variables(entry.reference).whenComplete { body, error ->
+        session.variables(entry.reference).thenCompose { body ->
+            // A peripheral group holding just the peripheral of the same name (PM → PM, PORT → PORT): show its registers directly.
+            val only = children(body).singleOrNull()
+            if (entry.type == "Peripheral Group" && only != null && only.type == "Peripheral" && only.name == entry.name && only.reference > 0) {
+                session.variables(only.reference)
+            } else java.util.concurrent.CompletableFuture.completedFuture(body)
+        }.whenComplete { body, error ->
             edt {
                 if (gen != generation) return@edt
                 val children = if (error != null || body == null) {
@@ -123,7 +145,7 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
             .filter { item(it) != null }.associateBy { item(it)!!.entry.name }
         val sameShape = old.keys.toList() == entries.map { it.name } && parent.childCount == entries.size
         val nodes = entries.map { e ->
-            val row = ScopeRows.row(e.name, e.value, e.type, e.isScope)
+            val row = ScopeRows.row(e.name, e.value, e.type, e.isScope, decoder)
             val previous = old[e.name]?.let(::item)
             val changed = previous != null && (previous.row.value != row.value || previous.row.notRead != row.notRead)
             (old[e.name] ?: DefaultMutableTreeNode()).apply { userObject = Item(e, row, changed) }
@@ -183,9 +205,10 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
                     },
                 )
             }
+            r.raw?.let { append("  $it", gray) }
             r.description?.let { append("   $it", gray) }
             r.location?.let { append("   $it", SimpleTextAttributes.GRAY_SMALL_ATTRIBUTES) }
-            toolTipText = listOfNotNull(r.description, r.fullValue ?: r.value, r.location, item.entry.value.takeIf { r.kind == ScopeRows.Kind.FIELD }?.let { "bits: ${it.substringBefore(" @")}" })
+            toolTipText = listOfNotNull(r.fieldDescription, r.description, r.fullValue ?: r.value, r.location, item.entry.value.takeIf { r.kind == ScopeRows.Kind.FIELD }?.let { "bits: ${it.substringBefore(" @")}" })
                 .joinToString("<br>").takeIf { it.isNotEmpty() }?.let { "<html>$it</html>" }
             ipad = JBUI.insetsRight(8)
         }
