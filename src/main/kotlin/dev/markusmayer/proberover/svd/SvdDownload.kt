@@ -58,7 +58,7 @@ object SvdDownload {
                     if (project.isDisposed) return@invokeLater
                     JBPopupFactory.getInstance().createPopupChooserBuilder(candidates)
                         .setTitle("SVD File for $chip")
-                        .setRenderer(com.intellij.ui.SimpleListCellRenderer.create("") { "${it.name}  (${it.source})" })
+                        .setRenderer(com.intellij.ui.dsl.listCellRenderer.textListCellRenderer { "${it?.name}  (${it?.source})" })
                         .setItemChosenCallback { download(project, chip, it, onDone) }
                         .createPopup()
                         .showCenteredInCurrentWindow(project)
