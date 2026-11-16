@@ -49,6 +49,7 @@ class LiveWatchPanel(private val project: Project) : Disposable {
     val watches = mutableListOf<Watch>()
     var symbols: List<ElfSymbol> = emptyList()
         private set
+    /** The ELF the symbols were read from, as path and modification time: a rebuild keeps the path. */
     private var symbolsFrom: String? = null
 
     /** Memory access override for tests; otherwise the active probe-rs session. */
@@ -140,35 +141,42 @@ class LiveWatchPanel(private val project: Project) : Disposable {
     }
 
     fun loadSymbols(elf: String?) {
-        if (elf == null || elf == symbolsFrom) return
+        if (elf == null || symbolsKey(elf) == symbolsFrom) return
         ApplicationManager.getApplication().executeOnPooledThread {
+            val key = symbolsKey(elf)
             val read = runCatching { ElfSymbols.read(File(elf)) }.getOrDefault(emptyList())
-            ApplicationManager.getApplication().invokeLater({ symbols = read; symbolsFrom = elf }, ModalityState.any())
+            ApplicationManager.getApplication().invokeLater({ symbols = read; symbolsFrom = key }, ModalityState.any())
         }
     }
 
+    /** The symbols of the session's firmware, read again if it was rebuilt since. */
+    private fun currentSymbols(): List<ElfSymbol> {
+        val elf = ProbeRsSessions.get(project).active?.programBinary ?: return symbols
+        val key = symbolsKey(elf)
+        if (key != symbolsFrom) {
+            symbols = runCatching { ElfSymbols.read(File(elf)) }.getOrDefault(emptyList())
+            symbolsFrom = key
+        }
+        return symbols
+    }
+
+    private fun symbolsKey(elf: String) = elf + "@" + File(elf).lastModified()
+
     fun setSymbols(list: List<ElfSymbol>) { symbols = list }
 
-    /** Adds a watch from user input; returns an error message, or null. */
-    fun addWatch(input: String, type: WatchType? = null): String? {
-        if (symbols.isEmpty()) {
-            ProbeRsSessions.get(project).active?.programBinary?.let { elf ->
-                symbols = runCatching { ElfSymbols.read(File(elf)) }.getOrDefault(emptyList()); symbolsFrom = elf
-            }
-        }
+    /** Adds a watch from user input; returns an error message, or null. [label] names it instead of [input]. */
+    fun addWatch(input: String, type: WatchType? = null, label: String? = null): String? {
+        val symbols = currentSymbols()
         val (address, guessed) = WatchResolver.resolve(input, symbols)
             ?: return if (symbols.isEmpty()) "Start a debug session first (symbols come from the firmware), or enter an address like 0x20000010."
             else "No variable named \"$input\" in the firmware. Use the name as in the code (e.g. COUNTER or blinky::COUNTER), or an address."
-        watches += Watch(input.trim(), address, type ?: guessed)
+        watches += Watch(label ?: input.trim(), address, type ?: guessed)
         model.items = watches
         return null
     }
 
     private fun askForWatch() {
-        if (symbols.isEmpty()) ProbeRsSessions.get(project).active?.programBinary?.let { elf ->
-            symbols = runCatching { ElfSymbols.read(File(elf)) }.getOrDefault(emptyList()); symbolsFrom = elf
-        }
-        val names = symbols.map { ElfSymbols.demangledTail(it.name) }.distinct().sorted()
+        val names = currentSymbols().map { ElfSymbols.demangledTail(it.name) }.distinct().sorted()
         val input = Messages.showEditableChooseDialog(
             "Global variable or address (0x…):", "Add Watch", null, names.toTypedArray(), names.firstOrNull() ?: "", null,
         ) ?: return

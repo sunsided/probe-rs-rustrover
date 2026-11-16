@@ -39,7 +39,8 @@ object ScopeRows {
     /** probe-rs entries not worth a row: optimized-out vtables of trait objects. */
     fun isNoise(name: String, value: String): Boolean = name.endsWith("::{vtable}") && value.contains("optimized out")
 
-    fun row(name: String, value: String, type: String?, isScope: Boolean = false, decoder: Decoder? = null): Row {
+    /** [fromSvd]: the row is under the SVD Peripherals scope, so `type` is a description and `@ 0x…` a register. */
+    fun row(name: String, value: String, type: String?, isScope: Boolean = false, decoder: Decoder? = null, fromSvd: Boolean = false): Row {
         if (isScope) return Row(name, Kind.SCOPE, null)
         when (type) {
             "Peripheral Group" -> return Row(name, Kind.GROUP, null, description = value.ifBlank { null })
@@ -50,8 +51,9 @@ object ScopeRows {
         val bits = at?.groups?.get(3)?.let { "[${it.value}..${at.groupValues[4]}]" }
         val location = at?.let { listOfNotNull(it.groupValues[2], bits).joinToString(" ") }
         val raw = at?.groupValues?.get(1) ?: value
-        // Registers and fields come from the SVD file: their "type" is a description, and they have an address.
-        val svd = at != null && type != null && !type.first().isLowerCase() && !type.startsWith("[") && type != "Platform Register"
+        // Registers and fields from the SVD file: their "type" is a description, and they have an address. Statics
+        // look alike (`AtomicU32 @ 0x20000038`), so only rows under SVD Peripherals count.
+        val svd = fromSvd && at != null && type != null
         val kind = when {
             svd && bits != null -> Kind.FIELD
             svd -> Kind.REGISTER
@@ -77,9 +79,10 @@ object ScopeRows {
         val short = if (oneLine.length > MAX_VALUE) oneLine.take(MAX_VALUE - 1) + "…" else oneLine
         val typeLabel = type?.takeIf { kind == Kind.VALUE && it != "<unknown>" }
         return Row(
-            name, kind, short,
+            // probe-rs shows structs as `AtomicU32 @ 0x20000038`: the type, already in the description.
+            name, kind, short.takeIf { it != type },
             description = description ?: typeLabel,
-            location = location ?: if (kind == Kind.VALUE) null else null,
+            location = location,
             fullValue = shown.takeIf { it != short },
         )
     }

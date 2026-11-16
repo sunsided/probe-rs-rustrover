@@ -216,6 +216,12 @@ class SvdFieldIndex(device: SvdDevice) {
 
     fun locate(registerAddress: Long, bitOffset: Int, bitWidth: Int): Located? = fields[Triple(registerAddress, bitOffset, bitWidth)]
 
+    private val registers: Map<Long, SvdRegister> = buildMap {
+        for (p in device.peripherals) for (r in p.registers) putIfAbsent(r.address, r)
+    }
+
+    fun register(address: Long): SvdRegister? = registers[address]
+
     fun field(registerAddress: Long, bitOffset: Int, bitWidth: Int): SvdField? = locate(registerAddress, bitOffset, bitWidth)?.field
 
     /** What a field's value means: its enumerated value from the SVD, or for SAM port registers, the pins. */

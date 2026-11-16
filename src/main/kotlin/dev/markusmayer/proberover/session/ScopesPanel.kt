@@ -60,6 +60,7 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
     init {
         TreeUIHelper.getInstance().installTreeSpeedSearch(tree)
         tree.emptyText.text = "Shown when the target halts"
+        com.intellij.ui.PopupHandler.installPopupMenu(tree, com.intellij.openapi.actionSystem.DefaultActionGroup(AddToLiveWatch()), "ProbeRsScopesPopup")
         tree.addTreeWillExpandListener(object : TreeWillExpandListener {
             override fun treeWillExpand(event: TreeExpansionEvent) {
                 val node = event.path.lastPathComponent as DefaultMutableTreeNode
@@ -75,6 +76,7 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
 
     /** Decodes field values with the SVD file's enumerated values, which probe-rs leaves out. Loaded on the first halt. */
     @Volatile private var decoder: ScopeRows.Decoder? = null
+    @Volatile private var svdIndex: SvdFieldIndex? = null
     private var decoderLoaded = false
 
     /** The target halted: update to the frame RustRover shows, once it has asked probe-rs for its scopes. */
@@ -83,7 +85,8 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
         if (decoderLoaded || svd == null) return refresh(attempt = 0)
         decoderLoaded = true
         ApplicationManager.getApplication().executeOnPooledThread {
-            decoder = runCatching { SvdFieldIndex(SvdParser.parse(java.io.File(svd))) }.getOrNull()?.let { index ->
+            svdIndex = runCatching { SvdFieldIndex(SvdParser.parse(java.io.File(svd))) }.getOrNull()
+            decoder = svdIndex?.let { index ->
                 ScopeRows.Decoder(index::meaning)
             }
             edt { refresh(attempt = 0) }
@@ -144,8 +147,9 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
         val old = (0 until parent.childCount).map { parent.getChildAt(it) as DefaultMutableTreeNode }
             .filter { item(it) != null }.associateBy { item(it)!!.entry.name }
         val sameShape = old.keys.toList() == entries.map { it.name } && parent.childCount == entries.size
+        val fromSvd = parent !== root && namePath(parent).firstOrNull() == "SVD Peripherals"
         val nodes = entries.map { e ->
-            val row = ScopeRows.row(e.name, e.value, e.type, e.isScope, decoder)
+            val row = ScopeRows.row(e.name, e.value, e.type, e.isScope, decoder, fromSvd)
             val previous = old[e.name]?.let(::item)
             val changed = previous != null && (previous.row.value != row.value || previous.row.notRead != row.notRead)
             (old[e.name] ?: DefaultMutableTreeNode()).apply { userObject = Item(e, row, changed) }
@@ -172,6 +176,21 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
             }
             model.nodeChanged(node)
         }
+    }
+
+    /** Right-click → Add to Live Watch, for statics and SVD registers. */
+    private inner class AddToLiveWatch : com.intellij.openapi.actionSystem.AnAction("Add to Live Watch", "Sample it while the target runs", AllIcons.Debugger.Watch) {
+        private fun target(): LiveWatchTarget? {
+            val node = tree.selectionPath?.lastPathComponent as? DefaultMutableTreeNode ?: return null
+            val path = node.path.drop(1).mapNotNull { item(it)?.row }
+            return liveWatchTarget(path) { address -> svdIndex?.register(address)?.sizeBytes }
+        }
+        override fun update(e: com.intellij.openapi.actionSystem.AnActionEvent) { e.presentation.isEnabled = target() != null }
+        override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
+            val t = target() ?: return
+            dev.markusmayer.proberover.watch.LiveWatchToolWindowFactory.addWatch(session.project, t.input, t.type, t.label)
+        }
+        override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
     }
 
     private fun placeholder() = DefaultMutableTreeNode(LOADING)
@@ -224,8 +243,33 @@ class ScopesPanel(private val session: ProbeRsSession) : Disposable {
         }
     }
 
+    /** What Live Watch is given: a name from the firmware or an address, with a type and a label for addresses. */
+    data class LiveWatchTarget(val input: String, val type: dev.markusmayer.proberover.watch.WatchType?, val label: String?)
+
     companion object {
         private val LOADING = Any()
+
+        /**
+         * What a row can be watched as, from its rows from the top scope down: a static by its Rust path
+         * (`blinky_basic::COUNTER`, as the firmware's symbols name it), an SVD register by its address, sized from the
+         * SVD ([registerBytes]). CPU registers aren't in memory; fields are parts of a register.
+         */
+        fun liveWatchTarget(path: List<ScopeRows.Row>, registerBytes: (Long) -> Int?): LiveWatchTarget? {
+            val scope = path.firstOrNull()?.name ?: return null
+            val row = path.last()
+            val inner = path.drop(1)
+            return when {
+                scope == "Statics" && row.kind == ScopeRows.Kind.VALUE && inner.dropLast(1).all { it.kind == ScopeRows.Kind.NAMESPACE } ->
+                    LiveWatchTarget(inner.joinToString("::") { it.name }, null, null)
+                scope == "SVD Peripherals" && row.kind == ScopeRows.Kind.REGISTER && row.location != null -> {
+                    val address = row.location.substringBefore(' ')
+                    val bytes = address.removePrefix("0x").toLongOrNull(16)?.let(registerBytes)
+                    LiveWatchTarget(address, bytes?.let { dev.markusmayer.proberover.watch.WatchType.forSize(it.toLong()) },
+                        inner.map { it.name }.distinct().joinToString("."))
+                }
+                else -> null
+            }
+        }
 
         /** probe-rs's scope names → what the tab shows, in this order. The locals are RustRover's own view. */
         private val SCOPES = linkedMapOf("Registers" to "CPU Registers", "Peripherals" to "SVD Peripherals", "Static" to "Statics")

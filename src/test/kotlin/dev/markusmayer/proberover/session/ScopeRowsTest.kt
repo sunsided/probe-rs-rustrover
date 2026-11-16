@@ -19,11 +19,11 @@ class ScopeRowsTest {
     fun `registers - value, description, address`() {
         assertEquals(
             Row("EVCTRL", Kind.REGISTER, "0x0000", description = "Event Control", location = "0x42004402"),
-            ScopeRows.row("EVCTRL", "0x0000 @ 0x42004402", "Event Control"),
+            ScopeRows.row("EVCTRL", "0x0000 @ 0x42004402", "Event Control", fromSvd = true),
         )
         assertEquals(
             Row("CTRLA", Kind.REGISTER, null, notRead = true, description = "Control A", location = "0x42004400"),
-            ScopeRows.row("CTRLA", "Register cannot be read without side effects @ 0x42004400", "Control A"),
+            ScopeRows.row("CTRLA", "Register cannot be read without side effects @ 0x42004400", "Control A", fromSvd = true),
         )
         assertEquals(Row("R1/a2/r2", Kind.REGISTER, "0x000003e8"), ScopeRows.row("R1/a2/r2", "0x000003e8", "Platform Register"))
     }
@@ -32,10 +32,10 @@ class ScopeRowsTest {
     fun `fields - value in hex or as a single bit, bit range with the address`() {
         assertEquals(
             Row("PMUXO", Kind.FIELD, "0xA", description = "Peripheral Multiplexing Odd", location = "0x41004436 [4..8]"),
-            ScopeRows.row("PMUXO", "1010 @ 0x41004436:4..8", "Peripheral Multiplexing Odd"),
+            ScopeRows.row("PMUXO", "1010 @ 0x41004436:4..8", "Peripheral Multiplexing Odd", fromSvd = true),
         )
-        assertEquals("1", ScopeRows.row("INEN", "1 @ 0x41004458:1..2", "Input Enable").value)
-        val notRead = ScopeRows.row("DRVSTR", "Field cannot be read without side effects @ 0x41004458", "Output Driver Strength Selection")
+        assertEquals("1", ScopeRows.row("INEN", "1 @ 0x41004458:1..2", "Input Enable", fromSvd = true).value)
+        val notRead = ScopeRows.row("DRVSTR", "Field cannot be read without side effects @ 0x41004458", "Output Driver Strength Selection", fromSvd = true)
         assertTrue(notRead.notRead)
     }
 
@@ -53,12 +53,12 @@ class ScopeRowsTest {
         assertEquals(
             Row("PMUXE", Kind.FIELD, "G", description = "Peripheral function G selected", location = "0x41004436 [0..4]",
                 raw = "0x6", fieldDescription = "Peripheral Multiplexing Even"),
-            ScopeRows.row("PMUXE", "0110 @ 0x41004436:0..4", "Peripheral Multiplexing Even", decoder = decoder),
+            ScopeRows.row("PMUXE", "0110 @ 0x41004436:0..4", "Peripheral Multiplexing Even", decoder = decoder, fromSvd = true),
         )
         assertEquals("no enumerated value for it: the number", "0xF",
-            ScopeRows.row("PMUXE", "1111 @ 0x41004436:0..4", "Peripheral Multiplexing Even", decoder = decoder).value)
+            ScopeRows.row("PMUXE", "1111 @ 0x41004436:0..4", "Peripheral Multiplexing Even", decoder = decoder, fromSvd = true).value)
         assertEquals("another field at the same address", "0x6",
-            ScopeRows.row("PMUXO", "0110 @ 0x41004436:4..8", "Peripheral Multiplexing Odd", decoder = decoder).value)
+            ScopeRows.row("PMUXO", "0110 @ 0x41004436:4..8", "Peripheral Multiplexing Odd", decoder = decoder, fromSvd = true).value)
     }
 
     @Test
@@ -72,6 +72,9 @@ class ScopeRowsTest {
         assertEquals("[Vector; 28]", row.description)
         assertEquals(Row("DEVICE_PERIPHERALS", Kind.VALUE, "true", description = "bool"), ScopeRows.row("DEVICE_PERIPHERALS", "true", "bool"))
         assertEquals(Kind.NAMESPACE, ScopeRows.row("blinky_basic", "", "namespace").kind)
+        val counter = ScopeRows.row("COUNTER", "AtomicU32 @ 0x20000038", "AtomicU32")
+        assertEquals("a static with an address is a value, not an SVD register", Kind.VALUE, counter.kind)
+        assertEquals("0x20000038", counter.location)
         assertTrue(ScopeRows.isNoise("<&u32 as core::fmt::Debug>::{vtable}", "< The value of this variable may have been optimized out of the debug info, by the compiler. >"))
     }
 }
