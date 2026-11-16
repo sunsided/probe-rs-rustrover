@@ -1,0 +1,81 @@
+---
+name: Release
+
+# A version tag (v0.1.0) makes a GitHub Release with the plugin zip, points the plugin repository on GitHub Pages to it,
+# and publishes to the Marketplace once its signing and publishing secrets are set.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release, plugin repository, Marketplace
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      pages: write # deploy the plugin repository
+      id-token: write # authenticate the Pages deployment
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # No cache for release builds (cache poisoning).
+          cache-disabled: true
+      - name: Build plugin
+        run: ./gradlew buildPlugin -PpluginVersion="${GITHUB_REF_NAME#v}"
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/distributions/*.zip --title "$GITHUB_REF_NAME" --generate-notes
+      - name: Plugin repository (updatePlugins.xml)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          zip="$(basename build/distributions/*.zip)"
+          mkdir -p site
+          cat > site/updatePlugins.xml <<XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <plugins>
+            <plugin id="dev.markusmayer.proberover" version="$version"
+                    url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$zip">
+              <name>probe-rs Debugging</name>
+              <idea-version since-build="263"/>
+            </plugin>
+          </plugins>
+          XML
+          cat site/updatePlugins.xml
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      - name: Sign and publish to the Marketplace
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          if [ -z "$PUBLISH_TOKEN" ] || [ -z "$CERTIFICATE_CHAIN" ]; then
+            echo "::warning::Set CERTIFICATE_CHAIN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD and PUBLISH_TOKEN to publish to the Marketplace."
+            exit 0
+          fi
+          ./gradlew publishPlugin -PpluginVersion="${GITHUB_REF_NAME#v}"
