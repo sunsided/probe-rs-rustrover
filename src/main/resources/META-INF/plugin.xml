@@ -1,4 +1,6 @@
-<idea-plugin>
+<!-- require-restart: finished debug sessions keep their tabs (RTT, probe-rs) and RustRover's DAP driver keeps our
+     driver configuration, so the plugin can't be unloaded cleanly while any of them is open. -->
+<idea-plugin require-restart="true">
     <id>dev.markusmayer.proberover</id>
     <name>probe-rs Debugging</name>
     <vendor>Markus Mayer</vendor>
