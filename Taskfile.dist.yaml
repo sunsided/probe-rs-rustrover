@@ -1,0 +1,80 @@
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list --sort=none
+    silent: true
+
+  build:
+    desc: Build the plugin zip into build/distributions
+    preconditions: &java
+      - sh: command -v java
+        msg: "java not found — install a JDK (Gradle then provisions the Java 25 toolchain)"
+    cmds:
+      - ./gradlew buildPlugin
+
+  run:
+    desc: Start a sandboxed RustRover with the plugin
+    preconditions: *java
+    cmds:
+      - ./gradlew runIde
+
+  test:
+    desc: Run the unit and end-to-end relay tests (pass extra args after --)
+    preconditions:
+      - sh: command -v java
+        msg: "java not found — install a JDK (Gradle then provisions the Java 25 toolchain)"
+      - sh: command -v python3
+        msg: "python3 not found — the end-to-end relay tests use it for the fake probe-rs"
+    cmds:
+      - ./gradlew test {{.CLI_ARGS}}
+
+  test:platform:
+    desc: Run all tests including the headless RustRover tests and screenshots (build/screenshots)
+    preconditions: *java
+    cmds:
+      - ./gradlew test -PplatformTests=true {{.CLI_ARGS}}
+
+  verify:
+    desc: Run the Plugin Verifier against RustRover and CLion
+    preconditions: *java
+    cmds:
+      - ./gradlew verifyPlugin
+
+  lint:
+    desc: Lint the GitHub workflows with actionlint and zizmor
+    preconditions:
+      - sh: command -v actionlint
+        msg: "actionlint not found — go install github.com/rhysd/actionlint/cmd/actionlint@latest (or snap install actionlint)"
+      - sh: command -v zizmor
+        msg: "zizmor not found — pipx install zizmor (or cargo install zizmor)"
+    cmds:
+      - actionlint
+      - zizmor --quiet .github
+
+  check:
+    desc: Static checks (workflow lint and Plugin Verifier)
+    cmds:
+      - task: lint
+      - task: verify
+
+  ci:
+    desc: What CI runs (workflow lint, all tests, Plugin Verifier, build)
+    cmds:
+      - task: lint
+      - task: test:platform
+      - task: verify
+      - task: build
+
+  publish:local:
+    desc: Build 0.1.0.<date>.<time> into the local plugin repository (~/.local/share/probe-rs-rustrover/plugin-repo)
+    preconditions: *java
+    cmds:
+      - ./gradlew publishLocalRepo
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - ./gradlew clean

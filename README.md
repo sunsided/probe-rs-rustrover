@@ -33,14 +33,24 @@ caveat emptor. [`docs/verification.md`](docs/verification.md) lists what ran on 
 - Also: Attach to Running Target, a remote probe-rs server, settings per run configuration, core dumps, a Wokwi debug
   configuration, and Tools → probe-rs → **Copy probe-rs Diagnostics** for bug reports.
 
-<p>
-  <img src="docs/screenshots/rtt-console.png" alt="RTT console with colored defmt levels and clickable source locations" width="640"><br>
-  <img src="docs/screenshots/peripherals.png" alt="Peripherals view with registers and decoded fields" width="640"><br>
-  <img src="docs/screenshots/live-watch.png" alt="Live Watch with two variables charted" width="640"><br>
-  <img src="docs/screenshots/settings.png" alt="probe-rs settings page" width="640">
-</p>
+The screenshots below are rendered headlessly by the `*InRustRoverTest` tests, with made-up data; the real thing has
+icons.
 
-These are rendered headlessly by the `*InRustRoverTest` tests, with made-up data; the real thing has icons.
+**RTT tab:** defmt logs with colored levels and clickable source locations.
+
+<img src="docs/screenshots/rtt-console.png" alt="RTT console with colored defmt levels and clickable source locations" width="640">
+
+**Peripherals tool window:** registers and their decoded fields from the SVD file.
+
+<img src="docs/screenshots/peripherals.png" alt="Peripherals view with registers and decoded fields" width="640">
+
+**Live Watch:** two globals sampled and charted while the target runs.
+
+<img src="docs/screenshots/live-watch.png" alt="Live Watch with two variables charted" width="640">
+
+**Settings:** Build, Execution, Deployment → probe-rs.
+
+<img src="docs/screenshots/settings.png" alt="probe-rs settings page" width="640">
 
 ## Getting started
 
@@ -124,6 +134,9 @@ configuration it is debugging (`ProbeRsExecutionListener` records the launch ins
 ./gradlew publishLocalRepo              # 0.1.0.<date>.<time> into a local plugin repository, see below
 ./gradlew runIde                        # a sandboxed RustRover with the plugin
 ```
+
+The same commands are in `Taskfile.dist.yaml` for [Task](https://taskfile.dev) (`task --list`), along with `task lint`,
+which checks the GitHub workflows with actionlint and zizmor, and `task ci`, which runs what CI runs.
 
 By default the build downloads RustRover 2026.3 and a Java 25 toolchain. To build against a local install instead, set
 `rustRoverPath` in `~/.gradle/gradle.properties` (or pass `-PrustRoverPath=…`); `verifyPlugin` then runs offline against
