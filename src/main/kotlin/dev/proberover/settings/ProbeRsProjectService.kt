@@ -11,6 +11,7 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 import dev.proberover.detect.CargoConfigDetector
 import dev.proberover.detect.DetectedProject
 import dev.proberover.model.ProbeRsTarget
+import dev.proberover.runconfig.EmbeddedRunSettings
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -31,6 +32,8 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         var chipOverride: String? = null
         var probeRsPath: String? = null
         var svdFile: String? = null
+        /** Overrides per Cargo run configuration, keyed by configuration name. */
+        var perConfiguration: MutableMap<String, EmbeddedRunSettings> = LinkedHashMap()
     }
 
     private var state = SettingsState()
@@ -44,16 +47,20 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         return CargoConfigDetector.detect(config?.readText(), cargoToml?.readText())
     }
 
-    /** The target to debug with probe-rs, or null when this project should use the normal host debugger. */
-    fun resolveTarget(): ProbeRsTarget? {
+    /**
+     * The target to debug with probe-rs, or null when this project should use the normal host debugger.
+     * Precedence: [run] (the Cargo run configuration's probe-rs tab) > project settings > `.cargo/config.toml`.
+     */
+    fun resolveTarget(run: EmbeddedRunSettings? = null): ProbeRsTarget? {
         if (!state.enabled) return null
         val detected = detect() ?: return null
-        val chip = state.chipOverride?.takeIf { it.isNotBlank() }
+        val chip = run?.chip?.takeIf { it.isNotBlank() } ?: state.chipOverride?.takeIf { it.isNotBlank() }
         val base = detected.probeRs ?: chip?.takeIf { detected.isEmbeddedTarget }?.let { ProbeRsTarget(chip = it) } ?: return null
-        return base.copy(
-            chip = chip ?: base.chip,
+        val projectLevel = base.copy(
+            chip = state.chipOverride?.takeIf { it.isNotBlank() } ?: base.chip,
             svdFile = state.svdFile?.takeIf { it.isNotBlank() } ?: base.svdFile,
         )
+        return run?.applyTo(projectLevel) ?: projectLevel
     }
 
     fun probeRsExecutable(): String? {

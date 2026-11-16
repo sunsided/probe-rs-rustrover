@@ -3,6 +3,8 @@ package dev.proberover.debugger
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.jetbrains.cidr.execution.debugger.backend.DebuggerDriverConfiguration
+import dev.proberover.runconfig.ProbeRsLaunchTracker
+import dev.proberover.runconfig.embeddedRunSettings
 import dev.proberover.settings.ProbeRsProjectService
 import org.rust.cargo.runconfig.RsToolchainHost
 import org.rust.debugger.RsDebuggerDriverConfigurationProvider
@@ -19,7 +21,8 @@ class ProbeRsDriverConfigurationProvider : RsDebuggerDriverConfigurationProvider
         emulateTerminal: Boolean,
     ): DebuggerDriverConfiguration? {
         val settings = project.service<ProbeRsProjectService>()
-        val target = settings.resolveTarget() ?: return null
+        val runSettings = project.service<ProbeRsLaunchTracker>().consume()?.let(project::embeddedRunSettings)
+        val target = settings.resolveTarget(runSettings) ?: return null
         val probeRs = settings.probeRsExecutable() ?: run {
             settings.notifyProbeRsMissing()
             return null

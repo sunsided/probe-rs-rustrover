@@ -1,7 +1,8 @@
 """A scripted stand-in for `probe-rs dap-server`, speaking DAP over stdio.
 
-It reproduces the probe-rs behavior the relay depends on: after `launch` it announces an RTT channel and only
-streams RTT data once the client has answered with `rttWindowOpened`.
+It reproduces the probe-rs behavior the relay depends on: flashing progress events during `launch`, an RTT channel
+announcement after it, and RTT data (with ANSI colors, as probe-rs may send it) only once the client has answered
+with `rttWindowOpened`.
 """
 import json
 import sys
@@ -54,6 +55,13 @@ while True:
         respond(req, {"supportsConfigurationDoneRequest": True, "supportsReadMemoryRequest": True})
         event("initialized", {})
     elif cmd == "launch":
+        if req["arguments"].get("chip") == "BROKEN":
+            send({"type": "response", "request_seq": req["seq"], "command": "launch", "success": False,
+                  "message": "Cannot launch", "body": {"error": {"id": 1, "format": "No connected probes were found."}}})
+            continue
+        event("progressStart", {"progressId": "1", "title": "Flashing device"})
+        event("progressUpdate", {"progressId": "1", "percentage": 50.0, "message": "Programming"})
+        event("progressEnd", {"progressId": "1"})
         respond(req)
         event("probe-rs-rtt-channel-config", {"channelNumber": 0, "channelName": "defmt", "dataFormat": "Defmt"})
     elif cmd == "rttWindowOpened":
@@ -61,7 +69,7 @@ while True:
             respond(req, success=False)
             continue
         respond(req)
-        event("probe-rs-rtt-data", {"channelNumber": 0, "data": "0.000123 INFO  Hello from the board\n"})
+        event("probe-rs-rtt-data", {"channelNumber": 0, "data": "0.000123 \u001b[32mINFO \u001b[0m Hello from the board\n"})
         event("probe-rs-show-message", {"severity": "warning", "message": "Flash verify skipped"})
     elif cmd == "disconnect":
         respond(req)

@@ -12,6 +12,8 @@ import com.jetbrains.cidr.execution.debugger.backend.dap.DapRequestType
 import dev.proberover.launch.LaunchConfigBuilder
 import dev.proberover.model.ProbeRsTarget
 import dev.proberover.relay.RelayMain
+import dev.proberover.session.LaunchChannel
+import dev.proberover.session.ProbeRsSessionUi
 import java.io.File
 import java.nio.file.Path
 
@@ -48,8 +50,12 @@ class ProbeRsDriverConfiguration(
 
     override fun getCommunicationMethod(): DapCommunicationMethod = DapCommunicationMethod.Stdio
 
-    override fun createDriverCommandLine(driver: DebuggerDriver, architectureType: ArchitectureType): GeneralCommandLine =
-        relayCommandLine(probeRsExecutable).withWorkDirectory(project.basePath)
+    override fun createDriverCommandLine(driver: DebuggerDriver, architectureType: ArchitectureType): GeneralCommandLine {
+        // One side channel per debug session: RTT tabs, flashing progress and error notifications.
+        val channel = LaunchChannel(ProbeRsSessionUi(project, target.chip))
+        return relayCommandLine(listOf(probeRsExecutable, "dap-server"), channel.port to channel.token)
+            .withWorkDirectory(project.basePath)
+    }
 
     companion object {
         /** `java -cp <plugin>:<gson>:<kotlin-stdlib> dev.proberover.relay.RelayMain -- probe-rs dap-server` */
@@ -57,7 +63,7 @@ class ProbeRsDriverConfiguration(
             relayCommandLine(listOf(probeRsExecutable, "dap-server"))
 
         /** The relay wrapped around any DAP server command; tests use it with a fake server. */
-        fun relayCommandLine(serverCommand: List<String>): GeneralCommandLine {
+        fun relayCommandLine(serverCommand: List<String>, sideChannel: Pair<Int, String>? = null): GeneralCommandLine {
             val javaHome = Path.of(System.getProperty("java.home"))
             val java = javaHome.resolve("bin").resolve(if (File.separatorChar == '\\') "java.exe" else "java")
             val classpath = listOf(RelayMain::class.java, JsonParser::class.java, KotlinVersion::class.java)
@@ -65,8 +71,9 @@ class ProbeRsDriverConfiguration(
                 .distinct()
                 .joinToString(File.pathSeparator)
             return GeneralCommandLine(
-                listOf(java.toString(), "-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", classpath, RelayMain::class.java.name, "--") +
-                    serverCommand,
+                listOf(java.toString(), "-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", classpath, RelayMain::class.java.name) +
+                    (sideChannel?.let { (port, token) -> listOf("--side-channel", port.toString(), token) } ?: emptyList()) +
+                    "--" + serverCommand,
             )
         }
     }

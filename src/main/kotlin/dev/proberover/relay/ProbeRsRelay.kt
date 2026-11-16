@@ -11,10 +11,15 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Everything standard passes through untouched. probe-rs's own extensions, which the IDE's DAP client drops, are
  * handled here:
- * - `probe-rs-rtt-channel-config`: answered with the `rttWindowOpened` request probe-rs waits for before it streams.
- * - `probe-rs-rtt-data`: turned into a standard `output` event, so RTT/defmt text shows in the debug console.
- * - `probe-rs-show-message`: turned into an `output` event (`important` for warnings and errors).
+ * - `probe-rs-rtt-channel-config`: answered with the `rttWindowOpened` request probe-rs waits for before it streams,
+ *   and announced on the side channel so the IDE can open a console tab.
+ * - `probe-rs-rtt-data`: sent to the side channel. Without one, turned into a standard `output` event so the text
+ *   still shows in the debug console.
+ * - `probe-rs-show-message`: copied to the side channel and shown as an `output` event.
  * - other `probe-rs-*` events: dropped.
+ *
+ * Standard `progress*` events and failed `launch`/`attach` responses pass through and are also copied to the side
+ * channel, because the IDE's DAP client ignores progress and shows launch errors without advice.
  * Responses to the requests the relay injects itself are swallowed.
  */
 class ProbeRsRelay(
@@ -22,6 +27,7 @@ class ProbeRsRelay(
     clientOut: OutputStream,
     serverIn: InputStream,
     serverOut: OutputStream,
+    private val side: SideChannel = NoSideChannel,
     private val log: (String) -> Unit = {},
 ) {
     private val fromClient = DapReader(clientIn)
@@ -54,17 +60,28 @@ class ProbeRsRelay(
         when (obj.str("type")) {
             "response" -> {
                 val requestSeq = obj.get("request_seq")?.asInt ?: return raw
-                if (requestSeq < OWN_SEQ_BASE) return raw
-                if (obj.get("success")?.asBoolean == false) {
-                    log("probe-rs rejected ${obj.str("command")}: ${obj.str("message")}")
+                val failed = obj.get("success")?.asBoolean == false
+                if (requestSeq >= OWN_SEQ_BASE) {
+                    if (failed) log("probe-rs rejected ${obj.str("command")}: ${obj.str("message")}")
+                    return null
                 }
-                return null
+                val command = obj.str("command")
+                if (failed && (command == "launch" || command == "attach")) {
+                    side.send(sideEvent("launch-failed") { addProperty("message", errorText(obj)) })
+                }
+                return raw
             }
             "event" -> {
                 val event = obj.str("event") ?: return raw
-                if (!event.startsWith("probe-rs-")) return raw
                 val body = obj.getAsJsonObject("body") ?: JsonObject()
                 val seq = obj.get("seq")?.asInt ?: 0
+                when (event) {
+                    "progressStart", "progressUpdate", "progressEnd" -> {
+                        side.send(sideEvent(PROGRESS_KINDS.getValue(event)) { copy(body, "progressId", "title", "message", "percentage") })
+                        return raw
+                    }
+                }
+                if (!event.startsWith("probe-rs-")) return raw
                 return when (event) {
                     "probe-rs-rtt-channel-config" -> onRttChannel(seq, body)
                     "probe-rs-rtt-data" -> onRttData(seq, body)
@@ -92,15 +109,27 @@ class ProbeRsRelay(
             })
         }
         toServer.write(ack.toString())
+        side.send(sideEvent("rtt-channel") {
+            addProperty("channel", channel)
+            addProperty("name", name)
+            addProperty("format", format)
+        })
         return output(seq, "console", "RTT channel $channel ($name, $format) connected\n")
     }
 
-    private fun onRttData(seq: Int, body: JsonObject): String {
+    private fun onRttData(seq: Int, body: JsonObject): String? {
         val channel = body.get("channelNumber")?.asInt ?: 0
-        val data = body.str("data") ?: ""
+        val data = stripAnsi(body.str("data") ?: "")
+        val name = synchronized(rttChannels) { rttChannels[channel] } ?: "rtt$channel"
+        val sent = side.send(sideEvent("rtt-data") {
+            addProperty("channel", channel)
+            addProperty("name", name)
+            addProperty("data", data)
+        })
+        if (sent) return null
+
         val multiChannel = synchronized(rttChannels) { rttChannels.size > 1 }
         val text = if (multiChannel && channel != 0) {
-            val name = synchronized(rttChannels) { rttChannels[channel] } ?: "rtt$channel"
             data.lineSequence().filter { it.isNotEmpty() }.joinToString("") { "[$name] $it\n" }
         } else data
         return output(seq, "stdout", text)
@@ -109,6 +138,10 @@ class ProbeRsRelay(
     private fun onShowMessage(seq: Int, body: JsonObject): String {
         val severity = body.str("severity") ?: "information"
         val message = body.str("message") ?: ""
+        side.send(sideEvent("message") {
+            addProperty("severity", severity)
+            addProperty("message", message)
+        })
         val category = if (severity == "warning" || severity == "error") "important" else "console"
         return output(seq, category, "probe-rs $severity: $message\n")
     }
@@ -123,10 +156,32 @@ class ProbeRsRelay(
         })
     }.toString()
 
+    private fun sideEvent(kind: String, fill: JsonObject.() -> Unit) = JsonObject().apply {
+        addProperty("kind", kind)
+        fill()
+    }
+
+    private fun JsonObject.copy(from: JsonObject, vararg keys: String) =
+        keys.forEach { k -> from.get(k)?.takeIf { !it.isJsonNull }?.let { add(k, it) } }
+
+    private fun errorText(response: JsonObject): String {
+        val format = response.getAsJsonObject("body")?.getAsJsonObject("error")?.str("format")
+        return listOfNotNull(response.str("message"), format).distinct().joinToString(": ")
+    }
+
     private fun JsonObject.str(key: String): String? = get(key)?.takeIf { it.isJsonPrimitive }?.asString
 
     companion object {
         /** Requests the relay sends itself use sequence numbers from here, far above anything the IDE uses. */
         const val OWN_SEQ_BASE = 1_000_000
+
+        private val PROGRESS_KINDS = mapOf(
+            "progressStart" to "progress-start",
+            "progressUpdate" to "progress-update",
+            "progressEnd" to "progress-end",
+        )
+        private val ANSI = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
+
+        fun stripAnsi(s: String): String = s.replace(ANSI, "")
     }
 }

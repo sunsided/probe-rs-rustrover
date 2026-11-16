@@ -3,8 +3,10 @@
     <name>probe-rs Debugging (spike)</name>
     <vendor>proberover</vendor>
     <description><![CDATA[
-    Spike: debug embedded Rust firmware in RustRover with probe-rs. Click Debug on a Cargo run configuration in a
-    project whose <code>.cargo/config.toml</code> uses <code>probe-rs run --chip …</code> as its runner.
+    Debug embedded Rust firmware in RustRover with probe-rs. Click Debug on a Cargo run configuration in a project
+    whose <code>.cargo/config.toml</code> uses <code>probe-rs run --chip …</code> as its runner: the firmware is
+    flashed, RTT/defmt logs get their own tab with colored levels and clickable locations, and probe-rs errors come
+    with a suggested fix. Settings are under Build, Execution, Deployment | probe-rs.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -20,7 +22,13 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="probe-rs" displayType="BALLOON"/>
-        <!-- Spike only: headless load check, see SelfCheckStarter. -->
-        <appStarter id="proberover-selfcheck" implementation="dev.proberover.selfcheck.SelfCheckStarter"/>
+        <consoleFilterProvider implementation="dev.proberover.defmt.DefmtConsoleFilterProvider"/>
+        <projectConfigurable parentId="build" id="dev.proberover.settings" displayName="probe-rs"
+                             instance="dev.proberover.settings.ProbeRsConfigurable"/>
     </extensions>
+
+    <projectListeners>
+        <listener class="dev.proberover.runconfig.ProbeRsExecutionListener"
+                  topic="com.intellij.execution.ExecutionListener"/>
+    </projectListeners>
 </idea-plugin>
