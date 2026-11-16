@@ -29,6 +29,8 @@ class ProbeRsRelay(
     serverOut: OutputStream,
     private val side: SideChannel = NoSideChannel,
     private val log: (String) -> Unit = {},
+    /** Records traffic: `ide→`, `→probe-rs`, `probe-rs→`, `→ide`. */
+    private val trace: (direction: String, message: String) -> Unit = { _, _ -> },
 ) {
     private val fromClient = DapReader(clientIn)
     private val toClient = DapWriter(clientOut)
@@ -79,18 +81,21 @@ class ProbeRsRelay(
         }
         val seq = ownSeq.getAndIncrement()
         pendingCommands[seq] = id
-        toServer.write(JsonObject().apply {
+        val request = JsonObject().apply {
             addProperty("seq", seq)
             addProperty("type", "request")
             addProperty("command", dapCommand)
             add("arguments", arguments)
-        }.toString())
+        }.toString()
+        trace("relay→probe-rs", request)
+        toServer.write(request)
     }
 
     /** Forwards IDE → probe-rs until the IDE closes its side. */
     fun pumpClientToServer() {
         while (true) {
             val msg = fromClient.read() ?: break
+            trace("ide→probe-rs", msg)
             toServer.write(msg)
         }
     }
@@ -99,7 +104,8 @@ class ProbeRsRelay(
     fun pumpServerToClient() {
         while (true) {
             val msg = fromServer.read() ?: break
-            handleServerMessage(msg)?.let(toClient::write)
+            trace("probe-rs→", msg)
+            handleServerMessage(msg)?.let { trace("→ide", it); toClient.write(it) }
         }
     }
 
@@ -167,6 +173,7 @@ class ProbeRsRelay(
                 addProperty("windowIsOpen", true)
             })
         }
+        trace("relay→probe-rs", ack.toString())
         toServer.write(ack.toString())
         side.send(sideEvent("rtt-channel") {
             addProperty("channel", channel)

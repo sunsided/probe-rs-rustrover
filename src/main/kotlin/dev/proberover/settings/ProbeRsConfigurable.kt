@@ -152,7 +152,8 @@ class ProbeRsConfigurable(private val project: Project) : BoundConfigurable("pro
             val target = d.buildTarget ?: "no build.target"
             return when {
                 d.probeRs != null -> "probe-rs runner for chip ${d.probeRs.chip} ($target)" +
-                    (d.probeRs.probe?.let { ", probe $it" } ?: "") + ", RTT as ${d.probeRs.rttFormat.wireName}"
+                    (d.probeRs.probe?.let { ", probe $it" } ?: "") + ", RTT as ${d.probeRs.rttFormat.wireName}" +
+                    (if (d.usesEmbeddedTest) ". embedded-test: run tests from the gutter; results appear in the test tree" else "")
                 d.isEmbeddedTarget -> "Embedded target $target, but the runner isn't probe-rs. Set a chip below to debug with probe-rs."
                 else -> "Not an embedded project ($target). Debugging uses the normal debugger."
             }

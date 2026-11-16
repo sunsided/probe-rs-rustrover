@@ -10,6 +10,8 @@ data class DetectedProject(
     val runner: List<String>?,
     /** Non-null when the runner is `probe-rs run --chip …`. */
     val probeRs: ProbeRsTarget?,
+    /** The crate uses the embedded-test harness, so `cargo test` runs on the target through the probe-rs runner. */
+    val usesEmbeddedTest: Boolean = false,
 ) {
     val isEmbeddedTarget: Boolean get() = buildTarget?.let(::isEmbeddedTriple) ?: false
 }
@@ -19,13 +21,61 @@ private val EMBEDDED_TRIPLE_PREFIXES = listOf("thumbv", "riscv32", "xtensa-", "a
 fun isEmbeddedTriple(triple: String): Boolean = EMBEDDED_TRIPLE_PREFIXES.any { triple.startsWith(it) } || triple.endsWith("-none-eabi") || triple.endsWith("-none-eabihf")
 
 /**
- * Reads the parts of `.cargo/config.toml` that matter to us. This is a deliberately small line-based reader for the
- * spike: tables, `key = "string"` and `key = ["array", "of", "strings"]` on one line. Phase 1 should use a real TOML
- * parser (the bundled TOML plugin, or tomlj).
+ * Reads the parts of `.cargo/config.toml` and `Cargo.toml` that matter to us, with a real TOML parser (Jackson's TOML
+ * module, bundled with the IDE). Falls back to a small line-based reader if that library isn't available.
  */
 object CargoConfigDetector {
+    private val toml by lazy { com.fasterxml.jackson.dataformat.toml.TomlMapper() }
 
     fun detect(cargoConfigToml: String?, cargoToml: String? = null): DetectedProject {
+        val parsed = try {
+            parseWithToml(cargoConfigToml, cargoToml)
+        } catch (e: LinkageError) {
+            null // the TOML library isn't reachable: use the line reader
+        }
+        return parsed ?: detectLineBased(cargoConfigToml, cargoToml)
+    }
+
+    /** Null if a file isn't valid TOML (Cargo would reject it too); the line reader then does its best. */
+    private fun parseWithToml(cargoConfigToml: String?, cargoToml: String?): DetectedProject? {
+        val config = cargoConfigToml?.takeIf { it.isNotBlank() }?.let { runCatching { toml.readTree(it) }.getOrNull() ?: return null }
+        val buildTarget = config?.path("build")?.path("target")?.let { if (it.isArray) it.path(0) else it }?.takeIf { it.isTextual }?.asText()
+
+        // [target.<triple or cfg(...)>] runner = "…" | ["…", …]; prefer the table for the build target.
+        val runners = config?.path("target")?.properties()?.mapNotNull { (key, table) ->
+            val runner = table.path("runner")
+            val args = when {
+                runner.isTextual -> splitCommandLine(runner.asText())
+                runner.isArray -> runner.mapNotNull { n -> n.takeIf { it.isTextual }?.asText() }
+                else -> null
+            }
+            args?.let { key to it }
+        }.orEmpty()
+        val runner = runners.firstOrNull { it.first == buildTarget }?.second ?: runners.firstOrNull()?.second
+
+        val usesDefmt = cargoToml?.let { text ->
+            val manifest = runCatching { toml.readTree(text) }.getOrNull() ?: return@let Regex("""(?m)^\s*defmt(-rtt)?\s*=""").containsMatchIn(text)
+            val tables = buildList {
+                add(manifest.path("dependencies"))
+                add(manifest.path("workspace").path("dependencies"))
+                manifest.path("target").properties().forEach { (_, t) -> add(t.path("dependencies")) }
+            }
+            tables.any { it.has("defmt") || it.has("defmt-rtt") }
+        } ?: false
+        val usesEmbeddedTest = cargoToml?.let { text ->
+            val manifest = runCatching { toml.readTree(text) }.getOrNull() ?: return@let text.contains("embedded-test")
+            buildList {
+                add(manifest.path("dev-dependencies")); add(manifest.path("dependencies"))
+                add(manifest.path("workspace").path("dependencies"))
+                manifest.path("target").properties().forEach { (_, t) -> add(t.path("dev-dependencies")); add(t.path("dependencies")) }
+            }.any { it.has("embedded-test") }
+        } ?: false
+
+        val probeRs = runner?.let { parseProbeRsRun(it) }?.let { if (usesDefmt) it.copy(rttFormat = RttDataFormat.DEFMT) else it }
+        return DetectedProject(buildTarget, runner, probeRs, usesEmbeddedTest)
+    }
+
+    private fun detectLineBased(cargoConfigToml: String?, cargoToml: String?): DetectedProject {
         var table = ""
         var buildTarget: String? = null
         var runner: List<String>? = null

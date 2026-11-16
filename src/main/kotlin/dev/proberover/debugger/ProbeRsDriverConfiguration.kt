@@ -61,7 +61,7 @@ class ProbeRsDriverConfiguration(
         // One side channel per debug session: RTT tabs, flashing progress and error notifications.
         val session = ProbeRsSession(project, target, configurationName)
         val channel = LaunchChannel(ProbeRsSessionUi(session))
-        return relayCommandLine(listOf(probeRsExecutable, "dap-server") + serverArguments, channel.port to channel.token)
+        return relayCommandLine(listOf(probeRsExecutable, "dap-server") + serverArguments, channel.port to channel.token, traceFile())
             .withWorkDirectory(project.basePath)
     }
 
@@ -71,7 +71,10 @@ class ProbeRsDriverConfiguration(
             relayCommandLine(listOf(probeRsExecutable, "dap-server"))
 
         /** The relay wrapped around any DAP server command; tests use it with a fake server. */
-        fun relayCommandLine(serverCommand: List<String>, sideChannel: Pair<Int, String>? = null): GeneralCommandLine {
+        /** Where the relay keeps the last session's DAP traffic, for "Copy probe-rs Diagnostics". */
+        fun traceFile(): File = File(PathManager.getLogPath(), "probe-rs/last-session.log")
+
+        fun relayCommandLine(serverCommand: List<String>, sideChannel: Pair<Int, String>? = null, traceFile: File? = null): GeneralCommandLine {
             val javaHome = Path.of(System.getProperty("java.home"))
             val java = javaHome.resolve("bin").resolve(if (File.separatorChar == '\\') "java.exe" else "java")
             val classpath = listOf(RelayMain::class.java, JsonParser::class.java, KotlinVersion::class.java)
@@ -81,6 +84,7 @@ class ProbeRsDriverConfiguration(
             return GeneralCommandLine(
                 listOf(java.toString(), "-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", classpath, RelayMain::class.java.name) +
                     (sideChannel?.let { (port, token) -> listOf("--side-channel", port.toString(), token) } ?: emptyList()) +
+                    (traceFile?.let { listOf("--trace-file", it.path) } ?: emptyList()) +
                     "--" + serverCommand,
             )
         }

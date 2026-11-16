@@ -56,4 +56,21 @@ class ProbeRsOutputTest {
         assertFalse(ProbeRsTools.isTooOld(Triple(0, 24, 0)))
         assertFalse(ProbeRsTools.isTooOld(Triple(1, 0, 0)))
     }
+
+    @Test
+    fun `chip info`() {
+        val info = ProbeRsOutput.chipInfo(
+            """
+            RP2040
+            Cores (2):
+                - core0 (Armv6m)
+                - core1 (Armv6m)
+            NVM: 0x10000000..0x11000000 (16 MiB)
+            RAM: 0x20000000..0x20042000 (264 KiB)
+            RAM: 0x51000000..0x51001000 (4 KiB)
+            """.trimIndent(),
+        )
+        assertEquals(listOf("core0", "core1"), info.cores)
+        assertEquals(listOf(0x20000000L until 0x20042000L, 0x51000000L until 0x51001000L), info.ram)
+    }
 }

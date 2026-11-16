@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>dev.proberover</id>
-    <name>probe-rs Debugging (spike)</name>
+    <name>probe-rs Debugging</name>
     <vendor>proberover</vendor>
     <description><![CDATA[
     Debug embedded Rust firmware in RustRover with probe-rs. Click Debug on a Cargo run configuration in a project
@@ -12,6 +12,10 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>com.jetbrains.rust</depends>
     <depends>com.intellij.nativeDebug</depends>
+    <dependencies>
+        <!-- TOML parser for .cargo/config.toml and Cargo.toml -->
+        <module name="intellij.libraries.jackson.dataformat.toml"/>
+    </dependencies>
 
     <extensions defaultExtensionNs="org.rust">
         <debugger.driverConfigurationProvider
@@ -43,6 +47,11 @@
             <action id="dev.proberover.CopyUdevCommand" class="dev.proberover.actions.CopyUdevRulesCommandAction"
                     text="Copy udev Rules Setup Command"
                     description="Copy the command that installs probe-rs's udev rules (Linux)"/>
+            <action id="dev.proberover.SaveCoreDump" class="dev.proberover.actions.SaveCoreDumpAction"
+                    text="Save Core Dump" description="Save registers and RAM of the halted target with probe-rs"/>
+            <action id="dev.proberover.CopyDiagnostics" class="dev.proberover.actions.CopyDiagnosticsAction"
+                    text="Copy probe-rs Diagnostics"
+                    description="Copy versions, detection, launch arguments and the last session's DAP traffic for a bug report"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </group>
     </actions>
@@ -50,5 +59,7 @@
     <projectListeners>
         <listener class="dev.proberover.runconfig.ProbeRsExecutionListener"
                   topic="com.intellij.execution.ExecutionListener"/>
+        <listener class="dev.proberover.runconfig.OverridesFollowRenames"
+                  topic="com.intellij.execution.RunManagerListener"/>
     </projectListeners>
 </idea-plugin>

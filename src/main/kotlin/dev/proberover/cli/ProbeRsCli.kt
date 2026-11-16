@@ -22,6 +22,9 @@ data class ProbeInfo(
     val label: String get() = "$name ($selector)" + if (accessible) "" else " – no permission"
 }
 
+/** What `probe-rs chip info <chip>` reports: cores and RAM regions. */
+data class ChipInfo(val cores: List<String>, val ram: List<LongRange>)
+
 /** Parsers for probe-rs's command-line output (formats from probe-rs's `cmd/list.rs`, `cmd/chip.rs`, `main.rs`). */
 object ProbeRsOutput {
     private val PROBE = Regex("""^\[\d+]:\s+(.*?)\s+--\s+([0-9a-fA-F]{4}):([0-9a-fA-F]{4})(?:-\d+)?:(\S*)\s+\((.+?)\)(\s+\(inaccessible\))?\s*$""")
@@ -40,6 +43,20 @@ object ProbeRsOutput {
         .filter { it.isNotEmpty() }
         .distinct()
         .toList()
+
+    private val RAM = Regex("""^RAM:\s+0x([0-9a-fA-F]+)\.\.0x([0-9a-fA-F]+)""")
+    private val CORE = Regex("""^\s+-\s+(\S+)\s+\(""")
+
+    /** From `probe-rs chip info`: `    - core0 (Armv6m)` and `RAM: 0x20000000..0x20042000 (264.0 KiB)` (end exclusive). */
+    fun chipInfo(output: String): ChipInfo {
+        val lines = output.lines()
+        return ChipInfo(
+            cores = lines.mapNotNull { CORE.find(it)?.groupValues?.get(1) },
+            ram = lines.mapNotNull { line ->
+                RAM.find(line.trim())?.let { m -> m.groupValues[1].toLong(16) until m.groupValues[2].toLong(16) }
+            },
+        )
+    }
 
     fun version(output: String): Triple<Int, Int, Int>? =
         VERSION.find(output)?.destructured?.let { (a, b, c) -> Triple(a.toInt(), b.toInt(), c.toInt()) }
@@ -61,6 +78,8 @@ class ProbeRsTools {
     }
 
     fun probes(probeRs: String): List<ProbeInfo> = run(probeRs, "list")?.let(ProbeRsOutput::probes).orEmpty()
+
+    fun chipInfo(probeRs: String, chip: String): ChipInfo? = run(probeRs, "chip", "info", chip)?.let(ProbeRsOutput::chipInfo)
 
     fun version(probeRs: String): Triple<Int, Int, Int>? {
         val stamp = File(probeRs).lastModified()

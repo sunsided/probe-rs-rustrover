@@ -93,4 +93,32 @@ class RunConfigInRustRoverTest : BasePlatformTestCase() {
         assertFalse(configurable.isModified)
         configurable.disposeUIResources()
     }
+
+    fun `test overrides follow a renamed run configuration and go away with a deleted one`() {
+        assertEquals("Run blinky", dev.proberover.runconfig.OverridesFollowRenames.previousName("Cargo.Run led", "Run led", "Cargo.Run blinky"))
+        val blinky = cargoConfiguration("Run blinky")
+        settings.perConfiguration["Run blinky"] = EmbeddedRunSettings(chip = "RP2040")
+        val oldId = blinky.uniqueID
+        blinky.name = "Run led"
+        project.messageBus.syncPublisher(com.intellij.execution.RunManagerListener.TOPIC).runConfigurationChanged(blinky, oldId)
+        assertEquals(mapOf("Run led" to EmbeddedRunSettings(chip = "RP2040")), settings.perConfiguration)
+        RunManager.getInstance(project).removeConfiguration(blinky)
+        assertTrue(settings.perConfiguration.isEmpty())
+    }
+
+    fun `test diagnostics never contain the remote token`() {
+        val service = project.getService(ProbeRsProjectService::class.java)
+        service.getState().remoteHost = "ws://pi.local:3000"
+        service.remoteToken = "s3cret-token"
+        try {
+            val report = com.intellij.openapi.application.ApplicationManager.getApplication()
+                .executeOnPooledThread<String> { dev.proberover.actions.Diagnostics.collect(project) }.get()
+            assertTrue(report.contains("remoteHost=set"))
+            assertFalse(report.contains("s3cret-token"))
+            assertTrue(report.contains("## Last session's DAP traffic"))
+        } finally {
+            service.getState().remoteHost = null
+            service.remoteToken = null
+        }
+    }
 }

@@ -4,7 +4,7 @@ import kotlin.system.exitProcess
 
 /**
  * Entry point of the relay child process:
- * `java -cp … dev.proberover.relay.RelayMain [--side-channel <port> <token>] -- probe-rs dap-server`.
+ * `java -cp … dev.proberover.relay.RelayMain [--side-channel <port> <token>] [--trace-file <path>] -- probe-rs dap-server`.
  *
  * The IDE's `DapDriver` talks DAP over this process's stdin/stdout; the relay starts probe-rs and talks to it over
  * probe-rs's stdin/stdout. probe-rs's stderr is passed through, so its log lines reach the IDE. With
@@ -30,6 +30,9 @@ object RelayMain {
                 .getOrNull()
         } ?: NoSideChannel
 
+        val traceLog = options.indexOf("--trace-file").takeIf { it >= 0 }?.let { options.getOrNull(it + 1) }
+            ?.let { runCatching { TraceLog(java.io.File(it)) }.getOrNull() }
+
         val process = ProcessBuilder(server).redirectError(ProcessBuilder.Redirect.INHERIT).start()
         val relay = ProbeRsRelay(
             clientIn = System.`in`,
@@ -38,6 +41,7 @@ object RelayMain {
             serverOut = process.outputStream,
             side = side,
             log = { System.err.println("[probe-rs relay] $it") },
+            trace = { direction, message -> traceLog?.add(direction, message) },
         )
 
         val upstream = Thread({
@@ -48,6 +52,7 @@ object RelayMain {
         runCatching { relay.pumpServerToClient() }.onFailure { System.err.println("[probe-rs relay] $it") }
         upstream.interrupt()
         (side as? AutoCloseable)?.close()
+        traceLog?.flush()
         exitProcess(process.waitFor())
     }
 }

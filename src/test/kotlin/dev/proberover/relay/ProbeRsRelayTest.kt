@@ -147,7 +147,8 @@ class ProbeRsRelayTest {
         val channel = LaunchChannel(object : SideEventListener {
             override fun onEvent(kind: String, event: JsonObject) { events += event }
         })
-        val cmd = ProbeRsDriverConfiguration.relayCommandLine(listOf("python3", "-u", script.path), channel.port to channel.token)
+        val trace = File.createTempFile("probe-rs-trace", ".log").apply { deleteOnExit() }
+        val cmd = ProbeRsDriverConfiguration.relayCommandLine(listOf("python3", "-u", script.path), channel.port to channel.token, trace)
         val ide = Ide(cmd.getCommandLineList(null))
         ide.request("initialize")
         ide.next(); ide.next()
@@ -163,6 +164,9 @@ class ProbeRsRelayTest {
             events.map { it["kind"].asString },
         )
         assertEquals("0.000123 INFO  Hello from the board\n", events[4]["data"].asString)
+        val traced = trace.readText()
+        assertTrue("trace has the launch request", traced.contains("ide→probe-rs") && traced.contains("\"command\":\"launch\""))
+        assertTrue("trace has the relay's own RTT acknowledgement", traced.contains("relay→probe-rs") && traced.contains("rttWindowOpened"))
     }
 
     @Test(timeout = 60_000)

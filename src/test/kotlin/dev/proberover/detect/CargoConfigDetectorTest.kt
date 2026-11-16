@@ -107,4 +107,50 @@ class CargoConfigDetectorTest {
         val t = CargoConfigDetector.parseProbeRsRun(splitCommandLine("C:\\tools\\probe-rs.exe run --chip esp32s3"))
         assertEquals("esp32s3", t?.chip)
     }
+
+    @Test
+    fun `multi-line arrays, inline tables and quoted keys`() {
+        val d = CargoConfigDetector.detect(
+            """
+            build = { target = "thumbv8m.main-none-eabihf" }
+
+            [target."thumbv8m.main-none-eabihf"]
+            runner = [
+                "probe-rs", "run",
+                "--chip", "RP235x",   # Raspberry Pi Pico 2
+                "--speed", "8000",
+            ]
+            rustflags = ["-C", "link-arg=-Tlink.x"]
+            """.trimIndent(),
+        )
+        assertEquals("thumbv8m.main-none-eabihf", d.buildTarget)
+        assertEquals("RP235x", d.probeRs?.chip)
+        assertEquals(8000, d.probeRs?.speedKhz)
+    }
+
+    @Test
+    fun `defmt from workspace, target-specific and dotted dependencies`() {
+        val config = "[target.thumbv7em-none-eabihf]\nrunner = \"probe-rs run --chip nRF52840_xxAA\""
+        listOf(
+            "[workspace.dependencies]\ndefmt = \"1\"",
+            "[target.'cfg(target_os = \"none\")'.dependencies]\ndefmt-rtt = \"1\"",
+            "[dependencies]\ndefmt.workspace = true",
+        ).forEach { manifest ->
+            assertEquals(manifest, RttDataFormat.DEFMT, CargoConfigDetector.detect(config, manifest).probeRs?.rttFormat)
+        }
+        assertEquals(RttDataFormat.STRING, CargoConfigDetector.detect(config, "[dependencies]\nembassy-executor = \"0.7\"\n# defmt = \"1\"").probeRs?.rttFormat)
+    }
+
+    @Test
+    fun `invalid TOML falls back to the line reader`() {
+        val d = CargoConfigDetector.detect("[target.thumbv6m-none-eabi]\nrunner = \"probe-rs run --chip RP2040\"\nbroken = [\n")
+        assertEquals("RP2040", d.probeRs?.chip)
+    }
+
+    @Test
+    fun `embedded-test harness is detected`() {
+        val config = "[target.thumbv7em-none-eabihf]\nrunner = \"probe-rs run --chip nRF52840_xxAA\""
+        assertTrue(CargoConfigDetector.detect(config, "[dev-dependencies]\nembedded-test = { version = \"0.6\", features = [\"defmt\"] }").usesEmbeddedTest)
+        assertFalse(CargoConfigDetector.detect(config, "[dependencies]\ndefmt = \"1\"").usesEmbeddedTest)
+    }
 }

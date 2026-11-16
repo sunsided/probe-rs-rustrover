@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
@@ -6,7 +7,7 @@ plugins {
 }
 
 group = "dev.proberover"
-version = "0.0.1-spike"
+version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
 
 // RustRover 2026.3 runs on Java 25.
 kotlin {
@@ -44,6 +45,13 @@ dependencies {
 
 intellijPlatform {
     pluginConfiguration {
+        name = "probe-rs Debugging"
+        version = project.version.toString()
+        changeNotes = providers.fileContents(layout.projectDirectory.file("CHANGELOG.md")).asText.map { md ->
+            // The latest release's section, as simple HTML.
+            md.substringAfter("\n## ").substringAfter("\n").substringBefore("\n## ").trim().lines()
+                .joinToString("\n", "<ul>\n", "\n</ul>") { "<li>" + it.removePrefix("- ").trim().replace(Regex("`([^`]+)`"), "<code>$1</code>") + "</li>" }
+        }
         ideaVersion {
             sinceBuild = "263"
             untilBuild = provider { null }
@@ -51,7 +59,13 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            if (rustRoverPath != null) local(file(rustRoverPath)) else recommended()
+            if (rustRoverPath != null) {
+                local(file(rustRoverPath))
+            } else {
+                // RustRover, and CLion, which bundles the Rust plugin and Native Debugging Support.
+                create(IntelliJPlatformType.RustRover, "2026.3")
+                create(IntelliJPlatformType.CLion, "2026.3")
+            }
         }
         // With a local IDE, its bundled plugins are all we need; don't ask the Marketplace.
         if (rustRoverPath != null) freeArgs = listOf("-offline")
@@ -60,6 +74,17 @@ intellijPlatform {
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
         )
+    }
+    // Signing and Marketplace publishing read their secrets from the environment (see .github/workflows/build.yml).
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+        // Pre-releases like 0.2.0-beta.1 go to the "beta" channel.
+        channels = provider { listOf(project.version.toString().substringAfter('-', "").substringBefore('.').ifEmpty { "default" }) }
     }
     buildSearchableOptions = false
     instrumentCode = false
