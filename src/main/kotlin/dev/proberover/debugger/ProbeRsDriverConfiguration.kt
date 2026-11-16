@@ -1,0 +1,73 @@
+package dev.proberover.debugger
+
+import com.google.gson.JsonParser
+import com.intellij.execution.configurations.GeneralCommandLine
+import com.intellij.openapi.application.PathManager
+import com.intellij.openapi.project.Project
+import com.jetbrains.cidr.ArchitectureType
+import com.jetbrains.cidr.execution.debugger.backend.DebuggerDriver
+import com.jetbrains.cidr.execution.debugger.backend.dap.DapCommunicationMethod
+import com.jetbrains.cidr.execution.debugger.backend.dap.DapDriverConfiguration
+import com.jetbrains.cidr.execution.debugger.backend.dap.DapRequestType
+import dev.proberover.launch.LaunchConfigBuilder
+import dev.proberover.model.ProbeRsTarget
+import dev.proberover.relay.RelayMain
+import java.io.File
+import java.nio.file.Path
+
+/**
+ * Runs the IDE's DAP debugger against `probe-rs dap-server`, through [RelayMain].
+ *
+ * All use of internal native-debugger API is in this file and in [ProbeRsDriverConfigurationProvider].
+ */
+class ProbeRsDriverConfiguration(
+    project: Project,
+    private val target: ProbeRsTarget,
+    private val probeRsExecutable: String,
+    isElevated: Boolean,
+    emulateTerminal: Boolean,
+) : DapDriverConfiguration(
+    project,
+    "probe-rs",
+    isElevated,
+    emulateTerminal,
+    DapRequestType.LAUNCH,
+    /* useSingleThreadStepping = */ true,
+    /* takeRequestTypeFromDapOptions = */ false,
+) {
+    override fun getDriverName(): String = "probe-rs"
+
+    override fun getDapLaunchOptions(commandLine: GeneralCommandLine): Map<String, Any> =
+        LaunchConfigBuilder.launch(target, commandLine.exePath, commandLine.workDirectory?.path ?: project.basePath)
+
+    override fun getDapAttachOptions(pid: Int): Map<String, Any> =
+        LaunchConfigBuilder.attach(target, null, project.basePath)
+
+    override fun getDapAttachOptions(commandLine: GeneralCommandLine): Map<String, Any> =
+        LaunchConfigBuilder.attach(target, commandLine.exePath, commandLine.workDirectory?.path ?: project.basePath)
+
+    override fun getCommunicationMethod(): DapCommunicationMethod = DapCommunicationMethod.Stdio
+
+    override fun createDriverCommandLine(driver: DebuggerDriver, architectureType: ArchitectureType): GeneralCommandLine =
+        relayCommandLine(probeRsExecutable).withWorkDirectory(project.basePath)
+
+    companion object {
+        /** `java -cp <plugin>:<gson>:<kotlin-stdlib> dev.proberover.relay.RelayMain -- probe-rs dap-server` */
+        fun relayCommandLine(probeRsExecutable: String): GeneralCommandLine =
+            relayCommandLine(listOf(probeRsExecutable, "dap-server"))
+
+        /** The relay wrapped around any DAP server command; tests use it with a fake server. */
+        fun relayCommandLine(serverCommand: List<String>): GeneralCommandLine {
+            val javaHome = Path.of(System.getProperty("java.home"))
+            val java = javaHome.resolve("bin").resolve(if (File.separatorChar == '\\') "java.exe" else "java")
+            val classpath = listOf(RelayMain::class.java, JsonParser::class.java, KotlinVersion::class.java)
+                .map { PathManager.getJarPathForClass(it) ?: error("Can't locate the jar for ${it.name}") }
+                .distinct()
+                .joinToString(File.pathSeparator)
+            return GeneralCommandLine(
+                listOf(java.toString(), "-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", classpath, RelayMain::class.java.name, "--") +
+                    serverCommand,
+            )
+        }
+    }
+}

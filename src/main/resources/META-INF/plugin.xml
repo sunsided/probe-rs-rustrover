@@ -1,0 +1,26 @@
+<idea-plugin>
+    <id>dev.proberover</id>
+    <name>probe-rs Debugging (spike)</name>
+    <vendor>proberover</vendor>
+    <description><![CDATA[
+    Spike: debug embedded Rust firmware in RustRover with probe-rs. Click Debug on a Cargo run configuration in a
+    project whose <code>.cargo/config.toml</code> uses <code>probe-rs run --chip …</code> as its runner.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.jetbrains.rust</depends>
+    <depends>com.intellij.nativeDebug</depends>
+
+    <extensions defaultExtensionNs="org.rust">
+        <debugger.driverConfigurationProvider
+                id="ProbeRsDriverConfigurationProvider"
+                implementation="dev.proberover.debugger.ProbeRsDriverConfigurationProvider"
+                order="first"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="probe-rs" displayType="BALLOON"/>
+        <!-- Spike only: headless load check, see SelfCheckStarter. -->
+        <appStarter id="proberover-selfcheck" implementation="dev.proberover.selfcheck.SelfCheckStarter"/>
+    </extensions>
+</idea-plugin>
