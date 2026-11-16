@@ -14,6 +14,10 @@ data class ProbeRsTarget(
     val connectUnderReset: Boolean = false,
     val allowEraseAll: Boolean = false,
     val flash: Boolean = true,
+    /** Compare flash contents first and only reprogram what changed. */
+    val skipUnchangedFlash: Boolean = true,
+    /** The core to debug. probe-rs debugs one core per session. */
+    val coreIndex: Int = 0,
     val haltAfterReset: Boolean = false,
     val catchReset: Boolean = false,
     val catchHardfault: Boolean = true,

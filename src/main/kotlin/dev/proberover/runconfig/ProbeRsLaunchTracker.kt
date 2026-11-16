@@ -18,6 +18,19 @@ class ProbeRsLaunchTracker {
     private data class Launch(val configurationName: String, val atNanos: Long)
 
     @Volatile private var last: Launch? = null
+    @Volatile private var attachRequestedAt: Long? = null
+
+    /** The next debug launch should attach to the running firmware instead of flashing it. */
+    fun requestAttach() {
+        attachRequestedAt = System.nanoTime()
+    }
+
+    /** Whether an attach was requested in the last minute. Handed out once. */
+    fun consumeAttach(): Boolean {
+        val at = attachRequestedAt ?: return false
+        attachRequestedAt = null
+        return System.nanoTime() - at < 60_000_000_000L
+    }
 
     fun record(configurationName: String) {
         last = Launch(configurationName, System.nanoTime())

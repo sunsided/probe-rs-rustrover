@@ -19,6 +19,7 @@ data class EmbeddedRunSettings(
     var haltAfterReset: Boolean = false,
     var connectUnderReset: Boolean = false,
     var rtt: RttMode = RttMode.AUTO,
+    var coreIndex: Int = 0,
 ) {
     val isDefault: Boolean get() = this == EmbeddedRunSettings()
 
@@ -30,6 +31,7 @@ data class EmbeddedRunSettings(
         flash = flash,
         haltAfterReset = haltAfterReset,
         connectUnderReset = connectUnderReset || base.connectUnderReset,
+        coreIndex = coreIndex,
         rttEnabled = rtt != RttMode.DISABLED && base.rttEnabled,
         rttFormat = when (rtt) {
             RttMode.DEFMT -> RttDataFormat.DEFMT

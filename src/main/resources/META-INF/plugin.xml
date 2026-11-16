@@ -24,10 +24,28 @@
         <notificationGroup id="probe-rs" displayType="BALLOON"/>
         <toolWindow id="Peripherals" anchor="right" secondary="false" canCloseContents="false"
                     factoryClass="dev.proberover.peripherals.PeripheralsToolWindowFactory"/>
+        <postStartupActivity implementation="dev.proberover.startup.ProbeRsStartupActivity"/>
         <consoleFilterProvider implementation="dev.proberover.defmt.DefmtConsoleFilterProvider"/>
         <projectConfigurable parentId="build" id="dev.proberover.settings" displayName="probe-rs"
                              instance="dev.proberover.settings.ProbeRsConfigurable"/>
     </extensions>
+
+    <actions>
+        <action id="dev.proberover.AttachToRunningTarget" class="dev.proberover.actions.AttachToRunningTargetAction"
+                text="Attach to Running Target with probe-rs"
+                description="Debug the selected Cargo configuration without flashing or resetting the chip"
+                icon="AllIcons.Debugger.AttachToProcess">
+            <add-to-group group-id="RunMenu" anchor="after" relative-to-action="Debug"/>
+        </action>
+        <group id="dev.proberover.ToolsGroup" text="probe-rs" popup="true">
+            <action id="dev.proberover.InstallProbeRs" class="dev.proberover.actions.InstallProbeRsAction"
+                    text="Install or Update probe-rs" description="Install probe-rs-tools with cargo"/>
+            <action id="dev.proberover.CopyUdevCommand" class="dev.proberover.actions.CopyUdevRulesCommandAction"
+                    text="Copy udev Rules Setup Command"
+                    description="Copy the command that installs probe-rs's udev rules (Linux)"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+    </actions>
 
     <projectListeners>
         <listener class="dev.proberover.runconfig.ProbeRsExecutionListener"

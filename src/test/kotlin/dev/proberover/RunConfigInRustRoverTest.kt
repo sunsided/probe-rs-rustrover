@@ -76,8 +76,8 @@ class RunConfigInRustRoverTest : BasePlatformTestCase() {
         assertEquals("Run blinky", model.getValueAt(0, 0))
         assertEquals("RP2040", model.getValueAt(0, 1))
 
-        model.setValueAt(false, 0, 4)            // Flash off
-        model.setValueAt(RttMode.DEFMT, 0, 5)    // RTT as defmt
+        model.setValueAt(false, 0, 5)            // Flash off
+        model.setValueAt(RttMode.DEFMT, 0, 6)    // RTT as defmt
         model.addRow(dev.proberover.settings.PerConfigurationTable.Row("Run button", EmbeddedRunSettings(probe = "1366:1051")))
         model.addRow(dev.proberover.settings.PerConfigurationTable.Row("Run empty", EmbeddedRunSettings())) // defaults only: dropped
         assertTrue(configurable.isModified)

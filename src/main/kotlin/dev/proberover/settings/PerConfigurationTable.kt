@@ -42,6 +42,12 @@ class PerConfigurationTable(private val project: Project) {
             override fun get(row: Row) = row.settings.svdFile.orEmpty()
             override fun set(row: Row, value: String) { row.settings.svdFile = value.trim().ifEmpty { null } }
         },
+        object : ColumnInfo<Row, Int>("Core") {
+            override fun valueOf(item: Row) = item.settings.coreIndex
+            override fun setValue(item: Row, value: Int?) { item.settings.coreIndex = (value ?: 0).coerceAtLeast(0) }
+            override fun isCellEditable(item: Row) = true
+            override fun getColumnClass(): Class<*> = java.lang.Integer::class.java
+        },
         object : ColumnInfo<Row, Boolean>("Flash") {
             override fun valueOf(item: Row) = item.settings.flash
             override fun setValue(item: Row, value: Boolean) { item.settings.flash = value }

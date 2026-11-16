@@ -54,7 +54,7 @@ class ScreenshotsInRustRoverTest : BasePlatformTestCase() {
             val configurable = ProbeRsConfigurable(project)
             val component = configurable.createComponent()!! as JComponent
             configurable.reset()
-            shoot(component, 820, 640, "settings")
+            shoot(component, 820, 760, "settings")
             configurable.disposeUIResources()
         } finally {
             settings.svdFile = null

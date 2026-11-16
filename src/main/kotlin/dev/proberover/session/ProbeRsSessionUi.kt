@@ -17,7 +17,10 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebugSessionListener
+import dev.proberover.actions.ProbeRsNotifications
 import dev.proberover.advice.ProbeRsErrorAdvisor
+import dev.proberover.cli.ProbeRsTools
+import dev.proberover.settings.ProbeRsProjectService
 import dev.proberover.defmt.DefmtLevel
 import dev.proberover.defmt.DefmtLine
 import dev.proberover.defmt.DefmtLineParser
@@ -174,8 +177,27 @@ class ProbeRsSessionUi(private val session: ProbeRsSession) : SideEventListener 
         }
         val notification = NotificationGroupManager.getInstance().getNotificationGroup("probe-rs")
             .createNotification(title, content, type)
+        if (advice?.title == "No permission to use the debug probe") ProbeRsNotifications.addUdevActions(notification)
         advice?.link?.let { link -> notification.addAction(NotificationAction.createSimple("Open probe setup guide") { BrowserUtil.browse(link) }) }
-        notification.notify(project)
+        if (advice?.title == "Several debug probes are connected") {
+            addProbeChoices(notification)
+        } else {
+            notification.notify(project)
+        }
+    }
+
+    /** Lists the connected probes as "Use …" actions that set the project's probe, then shows the notification. */
+    private fun addProbeChoices(notification: com.intellij.notification.Notification) {
+        val probeRs = project.getService(ProbeRsProjectService::class.java).probeRsExecutable()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val probes = probeRs?.let { runCatching { ProbeRsTools.get().probes(it) }.getOrNull() }.orEmpty()
+            probes.filter { it.accessible }.take(4).forEach { probe ->
+                notification.addAction(NotificationAction.createSimpleExpiring("Use ${probe.name}") {
+                    project.getService(ProbeRsProjectService::class.java).getState().probe = probe.selector
+                })
+            }
+            notification.notify(project)
+        }
     }
 
     // Helpers

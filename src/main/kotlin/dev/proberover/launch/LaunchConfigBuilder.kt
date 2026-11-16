@@ -21,7 +21,7 @@ object LaunchConfigBuilder {
 
     private fun session(target: ProbeRsTarget, cwd: String?, programBinary: String?, flashing: Boolean): Map<String, Any> {
         val core = buildMap<String, Any> {
-            put("coreIndex", 0)
+            put("coreIndex", target.coreIndex)
             programBinary?.let { put("programBinary", it) }
             target.svdFile?.let { put("svdFile", it) }
             put("catchReset", target.catchReset)
@@ -56,6 +56,7 @@ object LaunchConfigBuilder {
                 mapOf(
                     "flashingEnabled" to flashing,
                     "haltAfterReset" to target.haltAfterReset,
+                    "verifyBeforeFlashing" to target.skipUnchangedFlash,
                 ),
             )
             put("coreConfigs", listOf(core))

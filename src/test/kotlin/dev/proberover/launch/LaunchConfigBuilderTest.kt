@@ -31,7 +31,8 @@ class LaunchConfigBuilderTest {
               "consoleLogLevel": "Console",
               "flashingConfig": {
                 "flashingEnabled": true,
-                "haltAfterReset": false
+                "haltAfterReset": false,
+                "verifyBeforeFlashing": true
               },
               "coreConfigs": [
                 {

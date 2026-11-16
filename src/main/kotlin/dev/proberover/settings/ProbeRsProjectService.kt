@@ -1,7 +1,8 @@
 package dev.proberover.settings
 
-import com.intellij.notification.NotificationGroupManager
-import com.intellij.notification.NotificationType
+import com.intellij.credentialStore.CredentialAttributes
+import com.intellij.credentialStore.generateServiceName
+import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -32,6 +33,13 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         var chipOverride: String? = null
         var probeRsPath: String? = null
         var svdFile: String? = null
+        /** `--probe` selector (`VID:PID[:SERIAL]`) when several probes are connected. */
+        var probe: String? = null
+        var skipUnchangedFlash: Boolean = true
+        /** A remote probe-rs server (`probe-rs serve`) instead of a locally connected probe; its token is in the password safe. */
+        var remoteHost: String? = null
+        /** The one-time "embedded project detected" notification was shown. */
+        var introShown: Boolean = false
         /** Overrides per Cargo run configuration, keyed by configuration name. */
         var perConfiguration: MutableMap<String, EmbeddedRunSettings> = LinkedHashMap()
     }
@@ -59,9 +67,24 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         val projectLevel = base.copy(
             chip = state.chipOverride?.takeIf { it.isNotBlank() } ?: base.chip,
             svdFile = state.svdFile?.takeIf { it.isNotBlank() } ?: base.svdFile,
+            probe = state.probe?.takeIf { it.isNotBlank() } ?: base.probe,
+            skipUnchangedFlash = state.skipUnchangedFlash,
         )
         return run?.applyTo(projectLevel) ?: projectLevel
     }
+
+    /** Extra `probe-rs dap-server` arguments: `--host`/`--token` for a remote probe-rs server. */
+    fun serverArguments(): List<String> {
+        val host = state.remoteHost?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+        return listOf("--host", host) + (remoteToken?.let { listOf("--token", it) } ?: emptyList())
+    }
+
+    private val tokenAttributes get() = CredentialAttributes(generateServiceName("probe-rs", "remote token ${project.locationHash}"))
+
+    /** The remote probe-rs server's token, kept in the IDE's password safe rather than in the project files. */
+    var remoteToken: String?
+        get() = PasswordSafe.instance.getPassword(tokenAttributes)?.takeIf { it.isNotEmpty() }
+        set(value) = PasswordSafe.instance.setPassword(tokenAttributes, value?.takeIf { it.isNotEmpty() })
 
     /** `.svd` files in the project (a few levels deep, skipping build output), for picking the chip's SVD file. */
     fun findSvdFiles(maxDepth: Int = 4): List<File> {
@@ -81,17 +104,6 @@ class ProbeRsProjectService(private val project: Project) : PersistentStateCompo
         val dirs = System.getenv("PATH").orEmpty().split(File.pathSeparator).filter { it.isNotBlank() } +
             Path.of(System.getProperty("user.home"), ".cargo", "bin").toString()
         return dirs.asSequence().map { Path.of(it, exe) }.firstOrNull { Files.isExecutable(it) }?.toString()
-    }
-
-    fun notifyProbeRsMissing() {
-        NotificationGroupManager.getInstance().getNotificationGroup("probe-rs")
-            .createNotification(
-                "probe-rs not found",
-                "Debugging this embedded target needs probe-rs. Install it with <code>cargo binstall probe-rs-tools</code> " +
-                    "or the installer from probe.rs, then debug again.",
-                NotificationType.WARNING,
-            )
-            .notify(project)
     }
 
     private fun isWindows() = System.getProperty("os.name").startsWith("Windows")

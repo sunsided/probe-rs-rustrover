@@ -33,12 +33,14 @@ class ProbeRsDriverConfiguration(
     private val configurationName: String? = null,
     /** Extra arguments for `probe-rs dap-server`, e.g. `--host` for a remote probe server. */
     private val serverArguments: List<String> = emptyList(),
+    /** Attach to the running firmware (DAP `attach`: no flashing, no reset) instead of launching. */
+    attach: Boolean = false,
 ) : DapDriverConfiguration(
     project,
     "probe-rs",
     isElevated,
     emulateTerminal,
-    DapRequestType.LAUNCH,
+    if (attach) DapRequestType.ATTACH else DapRequestType.LAUNCH,
     /* useSingleThreadStepping = */ true,
     /* takeRequestTypeFromDapOptions = */ false,
 ) {
