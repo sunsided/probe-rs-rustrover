@@ -48,8 +48,10 @@ You need RustRover 2026.3 or later and probe-rs 0.24 or later (`cargo binstall p
 Install or Update probe-rs from the IDE). On Linux, the probe also needs probe-rs's udev rules; the plugin offers the
 command when it runs into a permission error.
 
-1. Build the plugin with `./gradlew buildPlugin` and install `build/distributions/probe-rs-rustrover-0.1.0.zip` via
-   Settings → Plugins → ⚙ → Install Plugin from Disk.
+1. Add `https://sunsided.github.io/probe-rs-rustrover/updatePlugins.xml` under Settings → Plugins → ⚙ → Manage Plugin
+   Repositories, then install **probe-rs Debugging** from the Marketplace tab; new releases show up as updates. (Or
+   download the zip from [Releases](https://github.com/sunsided/probe-rs-rustrover/releases) and use Install Plugin
+   from Disk.)
 2. Open a firmware project whose `.cargo/config.toml` has a probe-rs runner, e.g.:
 
    ```toml
@@ -132,10 +134,22 @@ it.
 `file:///home/<you>/.local/share/probe-rs-rustrover/plugin-repo/updatePlugins.xml` once under Settings → Plugins → ⚙ →
 Manage Plugin Repositories, and each `publishLocalRepo` shows up as an update of the installed plugin.
 
-**CI** (`.github/workflows/build.yml`) runs the tests, the Verifier and the build on every push. For a tag `v0.1.0` it
-signs and publishes to the Marketplace once the repository secrets `CERTIFICATE_CHAIN`, `PRIVATE_KEY`,
-`PRIVATE_KEY_PASSWORD` and `PUBLISH_TOKEN` are set.
+**CI** (`.github/workflows/build.yml`) runs the tests, the Verifier and the build on every push. A tag `v0.1.0` makes
+a GitHub Release with the zip and points the plugin repository on GitHub Pages to it; it also signs and publishes to the
+Marketplace once the repository secrets `CERTIFICATE_CHAIN`, `PRIVATE_KEY`, `PRIVATE_KEY_PASSWORD` and `PUBLISH_TOKEN`
+are set.
 
 Research notes and the original plan are in [`docs/plan.md`](docs/plan.md). When something fails on your board,
 Tools → probe-rs → **Copy probe-rs Diagnostics** collects versions, detection, the launch configuration and the last
 session's DAP traffic (never the remote server's token); please include it in the issue.
+
+## License
+
+Copyright © 2026 Markus Mayer
+
+Triple licensed under your choice of either of:
+
+- European Union Public Licence, Version 1.2, ([LICENSE-EUPL](LICENSE-EUPL)
+  or https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12)
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
